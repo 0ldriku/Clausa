@@ -1,0 +1,4 @@
+# The image only needs runner/ (environment definitions); keep caches and
+# outputs out of the build context.
+*
+!runner

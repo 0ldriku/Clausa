@@ -1,0 +1,56 @@
+{
+  "comment": "Every model Clausa downloads, pinned: Hugging Face repositories at a commit, MFA models from the mfa-models GitHub release. size and sha256 of every file are checked after downloading; blob is the name the Hugging Face cache stores the file under. See runner/models.py and docs/development.md, 'Models'.",
+  "models": [
+    {"id": "Qwen/Qwen3-ASR-1.7B", "label": "Qwen3-ASR-1.7B (speech recognition)", "source": "huggingface", "revision": "7278e1e70fe206f11671096ffdd38061171dd6e5", "languages": ["en", "ja"], "files": [
+      {"path": ".gitattributes", "size": 1519, "sha256": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361", "blob": "a6344aac8c09253b3b630fb776ae94478aa0275b"},
+      {"path": "README.md", "size": 57456, "sha256": "5058416891bc47a2051557765997e8c42f8eb78a0e33c3e775bd17d4b0ba4d50", "blob": "3a67d43f21febda213ff36efdb60ef10019af7f3"},
+      {"path": "chat_template.json", "size": 1161, "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff", "blob": "c44736493efd71ec96218cc626904698cdb13235"},
+      {"path": "config.json", "size": 6194, "sha256": "2e74a751548b8ad7d7526d29365ad8144c345d8b412b1152d25dc6698452712f", "blob": "2bc16c9d4ca08963715cfb94d879799b9adbd0e9"},
+      {"path": "generation_config.json", "size": 142, "sha256": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c", "blob": "7382a4d347c0a865b76bb1b8277f66a5ac312854"},
+      {"path": "merges.txt", "size": 1671853, "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5", "blob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"},
+      {"path": "model-00001-of-00002.safetensors", "size": 4220320824, "sha256": "a4cd1f1a04d90b757dc7f7dd26254e69a013b19e80efe590a83c6a3bde8608d6", "blob": "a4cd1f1a04d90b757dc7f7dd26254e69a013b19e80efe590a83c6a3bde8608d6"},
+      {"path": "model-00002-of-00002.safetensors", "size": 478200688, "sha256": "6e0b9d9e09e2e0238e7ef3cc8a484ab387e91b90f1900bedf88bc92d7929ccfc", "blob": "6e0b9d9e09e2e0238e7ef3cc8a484ab387e91b90f1900bedf88bc92d7929ccfc"},
+      {"path": "model.safetensors.index.json", "size": 64821, "sha256": "f994739fe38e5210b9e3e8ce6c6307315e2ceac3cb630e7b7414d69dce520f60", "blob": "1048a4eb4f21fef9aea06d8568a784b2b5595689"},
+      {"path": "preprocessor_config.json", "size": 330, "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d", "blob": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"},
+      {"path": "tokenizer_config.json", "size": 12487, "sha256": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c", "blob": "b93109843922a40c6654c5449d3bf95372267c66"},
+      {"path": "vocab.json", "size": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910", "blob": "4783fe10ac3adce15ac8f358ef5462739852c569"}
+    ]},
+    {"id": "Qwen/Qwen3-ForcedAligner-0.6B", "label": "Qwen3-ForcedAligner-0.6B (rough word timings)", "source": "huggingface", "revision": "c7cbfc2048c462b0d63a45797104fc9db3ad62b7", "languages": ["en", "ja"], "files": [
+      {"path": ".gitattributes", "size": 1519, "sha256": "11ad7efa24975ee4b0c3c3a38ed18737f0658a5f75a0a96787b576a78a023361", "blob": "a6344aac8c09253b3b630fb776ae94478aa0275b"},
+      {"path": "README.md", "size": 57456, "sha256": "5058416891bc47a2051557765997e8c42f8eb78a0e33c3e775bd17d4b0ba4d50", "blob": "3a67d43f21febda213ff36efdb60ef10019af7f3"},
+      {"path": "chat_template.json", "size": 1161, "sha256": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff", "blob": "c44736493efd71ec96218cc626904698cdb13235"},
+      {"path": "config.json", "size": 5982, "sha256": "d616c65d46c4b90bdc651b0a0963ea932732241140f337f9bb6b0335a9c8ef09", "blob": "7b9883fe52d0ba896773687a7fdad38eacab062d"},
+      {"path": "generation_config.json", "size": 115, "sha256": "948d089b23bca1d214e768d59c4438365665f52ec6d33678f4062206b3fbbb8c", "blob": "b0a540032cf7b6b5ba1438d04ab69b7e787d9b8e"},
+      {"path": "merges.txt", "size": 1671853, "sha256": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5", "blob": "31349551d90c7606f325fe0f11bbb8bd5fa0d7c7"},
+      {"path": "model.safetensors", "size": 1835544544, "sha256": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7", "blob": "47831d0e82f96b20e9034dba01a075ee06436654719f6a68289e49f1b65ce0e7"},
+      {"path": "preprocessor_config.json", "size": 330, "sha256": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d", "blob": "8f7f07346466d5d494ec0d4969d1c3d0190eed72"},
+      {"path": "tokenizer_config.json", "size": 12666, "sha256": "3ab80063f8511deb9566e6ad438d17b7a6277fcffd52d92854112f19d36bd81c", "blob": "3df92df83b22342e36a7b11cf9a70de2a2996bec"},
+      {"path": "vocab.json", "size": 2776833, "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910", "blob": "4783fe10ac3adce15ac8f358ef5462739852c569"}
+    ]},
+    {"id": "oldriku/Clausa", "label": "Clausa (disfluency detector)", "source": "huggingface", "revision": "1f5d280b20587c70c7e3a0dbd3534872440dec16", "languages": ["en", "ja"], "files": [
+      {"path": "config.json", "size": 706, "sha256": "feab0048442400d088ebb318a37ac3ec44b8876b8768574b76d16ab3d9a74d2d", "blob": "9186e5ef5ee9a0b29a949700e6acb856b45b90b9"},
+      {"path": "model.safetensors", "size": 1109842416, "sha256": "ed3a4aa35d319d5db955170e89fa98dc9ceb5d4e95bd1b5e91068deb4527c300", "blob": "ed3a4aa35d319d5db955170e89fa98dc9ceb5d4e95bd1b5e91068deb4527c300"},
+      {"path": "sentencepiece.bpe.model", "size": 5069051, "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865", "blob": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865"},
+      {"path": "special_tokens_map.json", "size": 295, "sha256": "8574792bfefae68f2ce2eae93a4145d95b1232c59e71094bcdcb49dbcb549c97", "blob": "d79c0fe029062eb03708803e72c3483296e2ea97"},
+      {"path": "tokenizer.json", "size": 17082832, "sha256": "8373f9cd3d27591e1924426bcc1c8799bc5a9affc4fc857982c5d66668dd1f41", "blob": "8373f9cd3d27591e1924426bcc1c8799bc5a9affc4fc857982c5d66668dd1f41"},
+      {"path": "tokenizer_config.json", "size": 1233, "sha256": "185f40a89596c504fd7dc7d91515b95844aab2994e778560df9215e0d1164264", "blob": "d297107d53da62483767139822cf5ed3a6975e24"}
+    ]},
+    {"id": "megagonlabs/transformers-ud-japanese-electra-base-ginza-510", "label": "GiNZA-Electra transformer (Japanese clauses)", "source": "huggingface", "revision": "8498b019a97bdf693fa138efcf7e118f099e2c4e", "languages": ["ja"], "files": [
+      {"path": ".gitattributes", "size": 1229, "sha256": "8e3fd48fac614873a9003585771ca39018669d867bb7a3e44c875bddc745b609", "blob": "76cfa96c09ef97d05025c568d5b4554fc6033039"},
+      {"path": "README.md", "size": 2618, "sha256": "34f526c55c725d175bafc8ceb300133695304ba3c9325cee9cb4288b619d9018", "blob": "27d69e5e9bfdcb4f474578f228db0563fdea5a3f"},
+      {"path": "config.json", "size": 815, "sha256": "b5a3b3bc61429f44f38f00e1624838a55622b6633673772d0d97ebdec4a647e1", "blob": "450ba88519fda48455f72d45ef2504518e3d83f9"},
+      {"path": "pytorch_model.bin", "size": 434384949, "sha256": "52ac9a8db9573b67ca572ed0e4da3f0ead34f6030a1247099f97049c15706cc7", "blob": "52ac9a8db9573b67ca572ed0e4da3f0ead34f6030a1247099f97049c15706cc7"},
+      {"path": "special_tokens_map.json", "size": 112, "sha256": "303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3", "blob": "e7b0375001f109a6b8873d756ad4f7bbb15fbaa5"},
+      {"path": "tokenizer_config.json", "size": 457, "sha256": "f3766cc1c5478d5adbb59c63856ead5f9bbca76e6ea6f9be33cfb337bb1b72c8", "blob": "976f34f98e871d9e3209582ec6e2a82820b883e9"},
+      {"path": "vocab.txt", "size": 223000, "sha256": "bf4a9863218cf6042bdfee6ff51803d306b8ccd2e084a9f122cdc6549d2ed3de", "blob": "30337e2837aea171a508401287ed8327e75d5f5d"}
+    ]},
+    {"id": "mfa/english_us_arpa", "label": "MFA English (word alignment)", "source": "mfa", "version": "v3.0.0", "languages": ["en"], "files": [
+      {"path": "acoustic/english_us_arpa.zip", "size": 91928208, "sha256": "d35ce271ded357d833d2f4b8d1041dc3748b9538567ba13f2c697f4e4126711b", "url": "https://github.com/MontrealCorpusTools/mfa-models/releases/download/acoustic-english_us_arpa-v3.0.0/english_us_arpa.zip"},
+      {"path": "dictionary/english_us_arpa.dict", "size": 7186498, "sha256": "e8c6c7b036ae2b7c78d2768b8dc6b1f9359175b842956d00b48c53c9c332e6b0", "url": "https://github.com/MontrealCorpusTools/mfa-models/releases/download/dictionary-english_us_arpa-v3.0.0/english_us_arpa.dict"}
+    ]},
+    {"id": "mfa/japanese_mfa", "label": "MFA Japanese (word alignment)", "source": "mfa", "version": "v3.0.0", "languages": ["ja"], "files": [
+      {"path": "acoustic/japanese_mfa.zip", "size": 92191596, "sha256": "85928ffb1024486872a677a92e1fa94d2f997462d0b84c73a58aa9bb0e35179a", "url": "https://github.com/MontrealCorpusTools/mfa-models/releases/download/acoustic-japanese_mfa-v3.0.0/japanese_mfa.zip"},
+      {"path": "dictionary/japanese_mfa.dict", "size": 21264022, "sha256": "4a0c66760576e4b7f3748f3169e7d5217c0135f857f0b5d34637c93a85fd1c91", "url": "https://github.com/MontrealCorpusTools/mfa-models/releases/download/dictionary-japanese_mfa-v3.0.0/japanese_mfa.dict"}
+    ]}
+  ]
+}

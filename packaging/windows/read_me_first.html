@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clausa: read me first</title>
+<style>
+  :root {
+    --bg: #0c0c0c; --card: #151515; --line: #262626; --fg: #ededeb; --dim: #a1a19d;
+    --accent: #22c55e; --accent-fg: #6ee7a0; --accent-bg: #16301f; --warn: #fbbf24;
+    --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+  header { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
+  header img { width: 72px; height: 72px; flex-shrink: 0; }
+  h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+  header p { margin: 2px 0 0; color: var(--dim); }
+  h2 { margin: 36px 0 12px; font-size: 18px; font-weight: 600; }
+  p, li { color: var(--fg); }
+  .dim { color: var(--dim); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin: 12px 0; }
+  .step { display: grid; grid-template-columns: 36px 1fr; gap: 14px; align-items: start; }
+  .num { width: 32px; height: 32px; border-radius: 16px; background: var(--accent-bg); color: var(--accent-fg); display: flex; align-items: center; justify-content: center; font-weight: 600; font-family: var(--mono); }
+  .step h3 { margin: 4px 0 8px; font-size: 16px; font-weight: 600; }
+  .step ol, .step ul { margin: 8px 0; padding-left: 20px; }
+  .step li { margin: 4px 0; }
+  .name { font-weight: 600; white-space: nowrap; }
+  code, .path { font-family: var(--mono); font-size: 13px; background: #1e1e1e; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; overflow-wrap: anywhere; }
+  .mock { margin: 12px 0 4px; border: 1px solid #2d5a8c; border-radius: 4px; background: #1f4e79; padding: 16px 18px; font-size: 13px; color: #fff; }
+  .mock .big { font-size: 20px; font-weight: 300; margin-bottom: 8px; }
+  .mock .link { text-decoration: underline; }
+  .mock .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .mock .btn { border: 1px solid #fff; padding: 3px 14px; white-space: nowrap; }
+  .mock .hl { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .note { border-left: 3px solid var(--warn); padding: 2px 0 2px 12px; color: var(--dim); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { white-space: nowrap; padding-left: 0; }
+  footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
+  @media (max-width: 520px) { main { padding: 24px 16px 48px; } header img { width: 56px; height: 56px; } h1 { font-size: 22px; } td:first-child { white-space: normal; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="{{ICON}}" alt="">
+    <div>
+      <h1>Clausa {{VERSION}}</h1>
+      <p>Fluency measures for learners' English and Japanese</p>
+    </div>
+  </header>
+
+  <p>Clausa analyses recordings of learners speaking and gives nine fluency measures for each one.
+    Everything runs on your PC. Nothing is uploaded.</p>
+
+  <h2>Before you start</h2>
+  <ul>
+    <li>64-bit Windows 11, or Windows 10 with Microsoft Edge.</li>
+    <li>An NVIDIA graphics card with 8 GB or more makes Clausa several times faster. Without one, it takes a
+      few minutes per recording.</li>
+    <li><b>{{FREE_GB}} GB</b> of free space.</li>
+    {{MODELS_NOTE}}
+    <li>Keep the Clausa folder out of OneDrive, Dropbox and Google Drive.</li>
+  </ul>
+
+  <h2>Set up</h2>
+  <div class="card step">
+    <div class="num">1</div>
+    <div>
+      <h3>Extract</h3>
+      <p>Right-click the zip and choose <b>Extract All</b>, then click <b>Extract</b>.</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">2</div>
+    <div>
+      <h3>Double-click <span class="name">Clausa.exe</span></h3>
+      <p>If Windows says it protected your PC, click <b>More info</b>, then <b>Run anyway</b>.</p>
+      <div class="mock" aria-hidden="true">
+        <div class="big">Windows protected your PC</div>
+        <div>Microsoft Defender SmartScreen prevented an unrecognized app from starting. Running this app might put your PC at risk.</div>
+        <div class="link hl" style="display:inline-block;margin-top:6px">More info</div>
+        <div class="row"><span class="btn hl">Run anyway</span><span class="btn">Don’t run</span></div>
+      </div>
+      <p>{{FIRST_START_NOTE}} Do not move the folder until the window says Clausa is ready. Then click
+        <b>Open Clausa</b>.</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">3</div>
+    <div>
+      <h3>Open <span class="name">Clausa.exe</span></h3>
+      <p>Click <b>New project</b>, name it and choose the language. Click <b>Add recordings</b>, then
+        <b>Start</b>.</p>
+    </div>
+  </div>
+
+  <h2>Results</h2>
+  <p>Each project is a folder in <span class="path">Documents\Clausa projects\</span>:</p>
+  <table>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>the measures, one row per recording</td></tr>
+    <tr><td><span class="path">audio\</span></td><td>copies of the recordings</td></tr>
+    <tr><td><span class="path">sessions\</span></td><td>the TextGrids and the log of each analysis</td></tr>
+  </table>
+  <p>Open the TextGrids in <a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a>
+    to check the clauses and pauses.</p>
+
+  <h2>Problems</h2>
+  <p>Click <b>Log</b> at the bottom of the window to see the log. To report a problem, send the
+    analysis's <span class="path">log.txt</span> from its session folder. If Clausa does not open, send the
+    <span class="path">logs</span> folder from the Clausa folder. Logs contain the recognised words. Send
+    recordings only if you may share them.</p>
+
+  <h2>Removing Clausa</h2>
+  <p>Close Clausa and delete the Clausa folder. Your projects stay in Documents.</p>
+
+  <footer>Clausa {{VERSION}} · MIT licence. Disfluency detector: CC BY-NC-SA 4.0.
+    See <span class="path">app\LICENSE.md</span>.</footer>
+</main>
+</body>
+</html>

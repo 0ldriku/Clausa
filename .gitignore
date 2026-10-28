@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Downloads, caches and container storage (see CLAUSA_CACHE)
+.cache/
+
+# Run outputs
+output/
+jobs/
+
+# Not distributed (see models/README.md)
+models/filler_classifier/
+
+.DS_Store
+
+# The app's own settings and logs (runner/paths.py)
+settings.json
+logs/

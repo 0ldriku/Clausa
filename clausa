@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""Entry point: ./clausa setup | doctor | models | run en|ja <audio> | webui | app"""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from runner.cli import main  # noqa: E402
+
+raise SystemExit(main())

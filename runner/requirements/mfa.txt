@@ -1,0 +1,4 @@
+Montreal-Forced-Aligner==3.3.9
+spacy==3.8.14
+sudachipy==0.6.11
+sudachidict-core==20260116

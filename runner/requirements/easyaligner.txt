@@ -1,0 +1,6 @@
+easyaligner==0.3.3
+praatio==6.2.2
+librosa==0.11.0
+jaconv==0.5.0
+fugashi==1.5.2
+unidic-lite==1.0.8

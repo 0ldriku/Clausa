@@ -1,0 +1,39 @@
+{
+  "about": "The PyTorch wheels of the Windows bundle's qwen3-asr environment, which First start downloads instead of the zip carrying them (packaging/build_windows.py, packaging/windows/first_start.py). cuda: the versions of runner/requirements/windows-lock/pip-qwen3-asr.txt (the validated environment, installed by setup from download.pytorch.org/whl/cu128), put back file for file; cpu: the same versions built for the processor, from download.pytorch.org/whl/cpu, installed by pip on a PC without an NVIDIA driver. Size and sha256 from those indexes.",
+  "cuda": [
+    {
+      "name": "torch",
+      "version": "2.8.0+cu128",
+      "file": "torch-2.8.0+cu128-cp312-cp312-win_amd64.whl",
+      "url": "https://download.pytorch.org/whl/cu128/torch-2.8.0%2Bcu128-cp312-cp312-win_amd64.whl",
+      "size": 3461384651,
+      "sha256": "0ad925202387f4e7314302a1b4f8860fa824357f9b1466d7992bf276370ebcff"
+    },
+    {
+      "name": "torchaudio",
+      "version": "2.8.0+cu128",
+      "file": "torchaudio-2.8.0+cu128-cp312-cp312-win_amd64.whl",
+      "url": "https://download.pytorch.org/whl/cu128/torchaudio-2.8.0%2Bcu128-cp312-cp312-win_amd64.whl",
+      "size": 4673203,
+      "sha256": "cce3a60cd9a97f7360c8f95504ac349311fb7d6b9b826135936764f4de5f782d"
+    }
+  ],
+  "cpu": [
+    {
+      "name": "torch",
+      "version": "2.8.0+cpu",
+      "file": "torch-2.8.0+cpu-cp312-cp312-win_amd64.whl",
+      "url": "https://download.pytorch.org/whl/cpu/torch-2.8.0%2Bcpu-cp312-cp312-win_amd64.whl",
+      "size": 619352539,
+      "sha256": "2be20b2c05a0cce10430cc25f32b689259640d273232b2de357c35729132256d"
+    },
+    {
+      "name": "torchaudio",
+      "version": "2.8.0+cpu",
+      "file": "torchaudio-2.8.0+cpu-cp312-cp312-win_amd64.whl",
+      "url": "https://download.pytorch.org/whl/cpu/torchaudio-2.8.0%2Bcpu-cp312-cp312-win_amd64.whl",
+      "size": 2495725,
+      "sha256": "9b302192b570657c1cc787a4d487ae4bbb7f2aab1c01b1fcc46757e7f86f391e"
+    }
+  ]
+}

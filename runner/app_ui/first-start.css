@@ -1,0 +1,99 @@
+/* Clausa First start window: the steps of First start with their progress, in the app's design
+   ("Refined dark", app.css: its tokens, fonts and controls). The page fills the window; the
+   steps scroll if the window is short. */
+
+.fs { height: 100%; display: flex; flex-direction: column; background: var(--ground); }
+
+.fs-head { flex-shrink: 0; display: flex; align-items: center; gap: 8px; height: var(--bar-h); padding: 0 24px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+.fs-head .wordmark { display: block; flex-shrink: 0; fill: var(--text); }
+.fs-tag { margin-left: 4px; padding: 1px 8px; border-radius: var(--r-pill); background: var(--gray-3); color: var(--muted); font-size: var(--fs-s); line-height: 18px; }
+
+.fs-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 28px 24px 24px; }
+.fs-col { max-width: 680px; margin: 0 auto; }
+.fs-body h1 { margin: 0; font-size: 20px; line-height: 28px; font-weight: 600; letter-spacing: -0.01em; }
+.phase-done h1 { display: flex; align-items: center; gap: 10px; }
+.phase-done h1 .st-ico { width: 22px; height: 22px; }
+.lead { margin: 6px 0 0; color: var(--muted); line-height: 20px; }
+
+/* ---------- the steps ---------- */
+.steps { list-style: none; margin: 24px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.step { border: 1px solid var(--line); border-radius: var(--r-box); background: var(--chrome); }
+.step.current { border-color: var(--gray-6); }
+.step.failed { border-color: var(--err-line); }
+.step-row { display: grid; grid-template-columns: 20px 1fr auto; align-items: center; gap: 12px; min-height: 52px; padding: 0 16px; }
+.step-label { font-size: var(--fs-m); line-height: 20px; font-weight: 500; }
+.step.waiting .step-label { color: var(--muted); font-weight: 400; }
+.step-side { font-family: var(--mono); font-size: var(--fs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.step-side.word { font-family: var(--font); }
+.step.done .step-side { color: var(--done-word); }
+.step.failed .step-side { color: var(--bad-word); }
+
+.st-ico { width: 20px; height: 20px; display: block; flex-shrink: 0; }
+.st-ico.done circle { fill: var(--done-bg); }
+.st-ico.done path { stroke: var(--done-word); }
+.st-ico.waiting circle, .st-ico.stopped circle { stroke: var(--gray-8); }
+.st-ico.skipped circle { fill: var(--gray-4); }
+.st-ico.skipped path { stroke: var(--gray-11); }
+.st-ico.failed circle { fill: var(--bad-bg); }
+.st-ico.failed path { stroke: var(--bad-word); }
+.st-ico.failed .dot { fill: var(--bad-word); }
+.st-ico.running .ring { stroke: var(--run-bg); }
+.st-ico.running .arc { stroke: var(--run-bar); transform-origin: 10px 10px; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* the running step: its bar with the numbers, then its items */
+.step-detail { padding: 0 16px 16px 48px; display: flex; flex-direction: column; gap: 12px; }
+.step-note { margin: 0; color: var(--muted); }
+.big-bar .track { height: 6px; border-radius: 3px; }
+.big-bar .fill { border-radius: 3px; }
+.big-bar .fill.indet { width: 30%; animation: indet 1.6s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.bar-nums { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-family: var(--mono); font-size: var(--fs); font-variant-numeric: tabular-nums; color: var(--muted); }
+.bar-nums .pct { margin-right: auto; color: var(--text); }
+.bar-nums .txt { font-family: var(--font); color: var(--text); }
+.bar-nums .txt + .txt { color: var(--muted); }
+.bar-nums .pct.inline { margin-right: 0; }
+.bar-nums.has-lab { flex-wrap: nowrap; }
+.bar-nums .lab { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-nums.has-lab > span:not(.lab) { flex-shrink: 0; white-space: nowrap; }
+
+.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.item { display: grid; grid-template-columns: 14px minmax(0, 1fr) 88px 128px; align-items: center; gap: 12px; min-height: 32px; border-top: 1px solid var(--rule); }
+.item:first-child { border-top: 0; }
+.item .i-ico { width: 14px; height: 14px; }
+.item .i-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item.waiting .i-label { color: var(--muted); }
+.item .i-bar .track { height: 4px; }
+.item .i-nums { font-family: var(--mono); font-size: var(--fs-s); color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.item.done .i-nums { color: var(--done-word); }
+.item.running .i-nums, .item.checking .i-nums { color: var(--text); }
+.item .i-nums.word { font-family: var(--font); }
+
+/* ---------- error and notes ---------- */
+.fs-err { margin-top: 20px; }
+.fs-err .err-detail { color: var(--red-11); font-family: var(--mono); font-size: var(--fs-s); line-height: 18px; word-break: break-word; }
+.notes { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; color: var(--muted); }
+.notes li.warning { color: var(--amber-11); }
+
+/* ---------- the foot ---------- */
+.fs-foot { flex-shrink: 0; background: var(--chrome); border-top: 1px solid var(--line); padding: 14px 24px; }
+.fs-foot .fs-col { display: flex; align-items: center; gap: 16px; min-height: 32px; }
+.foot-text { flex: 1 1 auto; margin: 0; color: var(--muted); line-height: 18px; }
+.foot-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.fs-foot button { height: 32px; }
+.fs-foot button:disabled { opacity: 0.6; cursor: default; }
+
+/* screenshots (?still=1) and reduced motion: no animation */
+.still *, .still *::before { animation: none !important; transition: none !important; }
+
+/* narrow: the items without their own bars (the step's bar shows the progress) */
+@media (max-width: 700px) {
+  .item { grid-template-columns: 14px minmax(0, 1fr) auto; }
+  .item .i-bar { display: none; }
+}
+@media (max-width: 560px) {
+  .fs-body { padding: 20px 16px; }
+  .fs-head, .fs-foot { padding-left: 16px; padding-right: 16px; }
+  .step-detail { padding-left: 16px; }
+  .fs-foot .fs-col { flex-direction: column; align-items: stretch; }
+}

@@ -1,0 +1,6 @@
+# Apple Silicon only: Stage 1 (Qwen3-ASR + forced aligner) through MLX on the Mac GPU, and the app window.
+mlx==0.32.3
+mlx-metal==0.32.3
+mlx-qwen3-asr==0.4.4
+nagisa==0.2.11  # the version qwen-asr pins (Japanese alignment tokenization, as on Linux)
+pywebview==6.2.1  # the app window (runner/app.py); brings pyobjc, bottle and proxy_tools

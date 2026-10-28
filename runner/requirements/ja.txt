@@ -1,0 +1,15 @@
+click==8.5.0
+ginza==5.2.0
+ja-ginza-electra==5.2.0
+numpy==2.2.6
+pandas==2.3.3
+praatio==6.2.2
+protobuf==3.20.3
+safetensors==0.7.0
+scipy==1.15.3
+sentencepiece==0.2.1
+spacy-transformers==1.1.9
+spacy==3.8.11
+SudachiDict-core==20260116
+SudachiPy==0.6.10
+transformers==4.25.1

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# Run ./clausa inside the container with rootless Podman.
+#
+#   container/clausa build                 build the image (once)
+#   container/clausa run en recordings/    any ./clausa command
+#   container/clausa webui                 browser UI on http://127.0.0.1:7860
+#   container/clausa clean                 delete the image storage
+#
+# The current directory is mounted at /work, so input and output paths must be
+# inside it. Image storage and model caches live in the repository's .cache/
+# (set CLAUSA_CACHE to put them elsewhere). The GPU is used when the NVIDIA
+# container toolkit's CDI spec is installed; otherwise everything runs on CPU.
+set -euo pipefail
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CACHE="${CLAUSA_CACHE:-$REPO/.cache}"
+IMAGE="${CLAUSA_IMAGE:-localhost/clausa:latest}"
+
+mkdir -p "$CACHE/podman/storage" "$CACHE/podman/run" "$CACHE/podman/tmp"
+conf="$CACHE/podman/storage.conf"
+if [ ! -f "$conf" ]; then
+  printf '[storage]\ndriver = "overlay"\ngraphroot = "%s"\nrunroot = "%s"\n' \
+    "$CACHE/podman/storage" "$CACHE/podman/run" > "$conf"
+fi
+export CONTAINERS_STORAGE_CONF="$conf" TMPDIR="$CACHE/podman/tmp"
+
+case "${1:-}" in
+  build)
+    shift
+    exec podman build -t "$IMAGE" -f "$REPO/container/Containerfile" "$@" "$REPO" ;;
+  clean)
+    exec podman system reset --force ;;
+  ""|-h|--help)
+    sed -n '2,13p' "$0"; exit 0 ;;
+esac
+
+opts=(--rm --security-opt label=disable --user root --shm-size 16g
+      -v "$REPO:/repo" -v "$CACHE:/cache" -v "$PWD:/work" -w /work
+      -e CLAUSA_CACHE=/cache -e CLAUSA_JOBS=/work/jobs)
+if command -v nvidia-ctk >/dev/null && nvidia-ctk cdi list 2>/dev/null | grep -q 'nvidia.com/gpu=all'; then
+  opts+=(--device nvidia.com/gpu=all)
+fi
+[ -t 0 ] && [ -t 1 ] && opts+=(-it)
+args=("$@")
+if [ "$1" = webui ]; then
+  opts+=(-p 127.0.0.1:7860:7860)
+  args+=(--host 0.0.0.0)
+fi
+
+exec podman run "${opts[@]}" "$IMAGE" micromamba run -n base python /repo/clausa "${args[@]}"

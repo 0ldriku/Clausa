@@ -1,0 +1,7 @@
+# Wheel builds in the qwen3-asr environment that differ from what pip picks on
+# macOS 26 or later (for the Mac app, which supports macOS 14; see README.md).
+# Same versions as pip-qwen3-asr.txt; only the build's minimum macOS is lower.
+# <file>  sha256:<hash>
+mlx-0.32.3-cp312-cp312-macosx_14_0_arm64.whl  sha256:7aecc3d4a904279492dae58e28378a3c4bec4533e7066e64ae5c78c7a5511f22
+mlx_metal-0.32.3-py3-none-macosx_14_0_arm64.whl  sha256:fdba88ed9131448cf163be2c7ad6374746d8818205f28657aa91b6c69050f691
+orjson-3.13.0-cp312-cp312-macosx_10_15_x86_64.macosx_11_0_arm64.macosx_10_15_universal2.whl  sha256:fb8644dc6d705e1269ed2842bf4dbe2b4e50d670de503bf79d5cef3a5148a4c7

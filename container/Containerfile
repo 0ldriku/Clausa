@@ -1,0 +1,30 @@
+# The pipeline's conda environments in one image (Linux, NVIDIA GPU or CPU).
+#
+# Environments come from `clausa setup` (runner/setup_envs.py); models are not
+# baked in and download into the host cache on first use.
+#
+#   container/clausa build
+#   container/clausa run en recordings/
+
+FROM docker.io/mambaorg/micromamba:2.0.5
+
+USER root
+ENV MAMBA_ROOT_PREFIX=/opt/conda \
+    MAMBA_EXE=/bin/micromamba \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN printf 'channels:\n  - conda-forge\n' > /root/.mambarc \
+ && micromamba install -y -n base python=3.12 \
+ && micromamba clean -a -y
+
+# cuda (RTX 50xx and older NVIDIA GPUs) or cpu
+ARG TORCH=cuda
+COPY runner /build/runner
+RUN cd /build \
+ && CLAUSA_CACHE=/build/.cache micromamba run -n base python -c \
+      "from runner.setup_envs import setup; setup(torch='${TORCH}', models=False, easyaligner=True)" \
+ && micromamba clean -a -y \
+ && rm -rf /build
+
+WORKDIR /work
