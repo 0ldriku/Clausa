@@ -1,8 +1,14 @@
 # Clausa
 
-Clausa measures how fluently learners speak English or Japanese. It analyses
-recordings and gives nine fluency measures for each one in a spreadsheet, plus
-annotation files you can open in [Praat](https://www.fon.hum.uva.nl/praat/).
+Clausa turns recordings of second-language speech into clause-based utterance
+fluency measures. It transcribes the speech, aligns each word, divides
+the speech into clauses and finds disfluencies, including filled pauses the
+transcript missed. It then gives nine speed and pause measures for each
+recording, including pauses in the middle and at the end of clauses. The
+measures come in a spreadsheet, and the annotations in TextGrid files you can
+open in Praat. Clausa works with English and Japanese for now.
+
+The name comes from *clause* and *pausa*, Latin for pause.
 
 ## Download
 
@@ -50,8 +56,7 @@ up stops, start it again: it continues where it stopped.
 3. Click **Start**.
 4. When it finishes, click **Open CSV** to see the measures.
 
-Projects are saved in `Documents/Clausa projects`. If something goes wrong,
-send us the `logs` folder from the `Clausa` folder.
+Projects are saved in `Documents/Clausa projects`.
 
 ## Measures
 
@@ -79,9 +84,13 @@ To get the article's results exactly, see
 
 ## Limitations
 
-Clausa's results are automatic and can contain errors. Check them before you
-use them, for example by opening the annotation files in Praat. You are
-responsible for the results you report.
+Clausa's results are produced automatically and may contain errors. Check
+them before you report them, for example by opening the annotation files in
+Praat. You are responsible for the results you report.
+
+The annotation files give the start and end time of each word, pause,
+disfluency and clause that Clausa found. You can also compute your own
+measures from them.
 
 In Japanese, a number written in digits is read one digit at a time. For
 example, 25 (にじゅうご, 5 morae) counts as 2 morae. This changes the measures
@@ -105,11 +114,26 @@ minutes of audio in all.
 Analyse all recordings of one study on the same computer. Different computers
 can give slightly different results.
 
-## Future plans
+## Languages
 
-Clausa will support more languages than English and Japanese. To make that
-possible, we plan to make the clause segmentation customisable for each
-language, or to let an LLM assistant segment the clauses.
+Clausa supports English and Japanese. Its design is not tied to these two
+languages, but each step has parts written for them. A new language needs a
+speech recogniser and aligners that cover it, clause rules written for it, and
+a way to count its syllables. Everything after the first step builds on the
+transcript, so the recogniser's accuracy on learner speech matters most. The
+disfluency detector is harder to extend: it was trained on English and
+Japanese only.
+
+We plan to make the clause segmentation easier to adapt to a new language.
+
+## Help
+
+We have tested Clausa only on a few of our own computers. If it does not work
+on yours, or something else goes wrong, open an issue on
+[GitHub](https://github.com/0ldriku/Clausa/issues) or email us at
+oldriku@proton.me. Please attach the `logs` folder from the `Clausa` folder.
+The logs contain the words recognised in your recordings, so send them only
+if you may share them.
 
 ## For programmers
 
