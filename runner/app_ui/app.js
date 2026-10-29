@@ -1052,7 +1052,7 @@
 
     var X = {}, clock = 14 * 3600 + 5 * 60 + 2, sim = null, stopTimer = null, noticeN = 0;
     var D = {
-      app: { version: '1.0.0', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX' },
+      app: { version: '1.0.1', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX' },
       settings: { projects_dir: DIR, projects_dir_short: DIR },
       projects: [], earlier: [], current: null, run: idleRun(), notice: { id: 0, text: '' }
     };

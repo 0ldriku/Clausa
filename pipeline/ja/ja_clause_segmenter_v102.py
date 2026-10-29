@@ -6559,7 +6559,7 @@ def process_single_textgrid(input_path: str, output_path: str,
 
     tg = TextGridHandler(input_path)
     tg_words = tg.get_word_list()
-    print(f"  Words: {len(tg_words)}, Mora: {tg.total_mora}")
+    print(f"  Words: {len(tg_words)}")
 
     # --- Disfluency detection ---
     disfluency_labels = None
@@ -6697,7 +6697,7 @@ def process_single_textgrid(input_path: str, output_path: str,
     # Build log
     clause_log = []
     clause_log.append(f"File: {filename}")
-    clause_log.append(f"Words: {len(tg_words)}, Mora: {tg.total_mora}")
+    clause_log.append(f"Words: {len(tg_words)}")
     if disfluency_labels is not None:
         clause_log.append(f"Disfluent words: {sum(disfluency_labels)}")
     clause_log.append(f"Clauses (Logical): {len(logical_clauses)}")

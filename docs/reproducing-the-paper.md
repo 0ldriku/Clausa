@@ -5,16 +5,16 @@ For everyday use, the default analysis is better. See
 
 ## The reported numbers
 
-A separate analysis repository holds the TextGrids of the article's run and
-its RQ1-RQ3 scripts. It reproduces every reported table exactly, without a GPU:
+The article's analysis code and data are on Zenodo,
+https://doi.org/10.5281/zenodo.23729881: the TextGrids of the article's run
+and its RQ1-RQ3 scripts. They reproduce every reported table exactly, without
+a GPU. The speakers' words are not included; the README there says how to put
+them back from your own copy of ALLSSTAR and I-JAS. Then:
 
 ```bash
 python3 -m venv venv && venv/bin/pip install -r requirements-analysis.txt
 PYTHON=venv/bin/python bash reproduce_macos.sh
 ```
-
-It contains the corpus transcripts, so it is only for holders of the ALLSSTAR
-and I-JAS licences. Contact the authors.
 
 ## Paper mode
 

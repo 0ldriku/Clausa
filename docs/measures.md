@@ -5,25 +5,6 @@ Clausa computes the nine measures from each recording's TextGrid in
 `pipeline/en/caf_calculator_vad_classifier.py` and
 `pipeline/ja/caf_calculator_ja_gap_classifier.py`.
 
-## Units
-
-- **Span:** from the start of the first word to the end of the last word.
-  Silence before and after is left out.
-- **Syllables, English:** counted from each word's spelling. Each group of
-  vowels (a, e, i, o, u, y) is one syllable. A final e is silent when the word
-  has more than one group. Every word has at least one.
-- **Morae, Japanese:** counted from each word's characters. Each character is
-  one, except small kana (ぁ ぃ ぅ ぇ ぉ ゃ ゅ ょ ゎ and their katakana), っ, ッ
-  and ー. A kanji counts as one.
-- Every word counts, fillers and repetitions included.
-- **Pause:** a silence between words of 0.25 s or longer. Speech that the word
-  aligner finds inside a silence, 0.10 s or longer, splits it. The silent parts
-  left are pauses if they are 0.25 s or longer.
-- **Speaking time:** the span minus all pauses.
-- **Pause location:** the part of a pause inside a clause is a mid-clause
-  pause. The part between two clauses is an end-clause pause. Pauses before the
-  first clause or after the last one count only in PR and MPD.
-
 ## Formulas
 
 | Measure | Formula |
@@ -38,7 +19,10 @@ Clausa computes the nine measures from each recording's TextGrid in
 | ECPD | mean duration of end-clause pauses |
 | MPD | mean duration of all pauses |
 
-- Japanese uses morae in place of syllables. Durations are in seconds.
+- Japanese uses morae in place of syllables, counted from each word's kana
+  reading, read in context with SudachiPy and its core dictionary (Takaoka et
+  al., 2018). A small kana joins the kana before it; ッ, ン and ー count one
+  each. Durations are in seconds.
 - For MCPR, ECPR, MCPD and ECPD, a pause that crosses a clause boundary is
   split there. PR and MPD count it whole.
 - For MLR, a silence of 0.25 s or longer ends a run even when speech was found
@@ -55,3 +39,11 @@ Clausa computes the nine measures from each recording's TextGrid in
 and `clf_refined_pause_count` are the numbers of pauses before and after the
 speech inside them is taken out; `clf_pauses_split` and
 `clf_predicted_speech_islands` count the pauses split and the speech found.
+
+## Reference
+
+Takaoka, K., Hisamoto, S., Kawahara, N., Sakamoto, M., Uchida, Y., & Matsumoto,
+Y. (2018). Sudachi: A Japanese tokenizer for business. In *Proceedings of the
+Eleventh International Conference on Language Resources and Evaluation (LREC
+2018)*. European Language Resources Association.
+https://aclanthology.org/L18-1355/

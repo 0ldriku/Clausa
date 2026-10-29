@@ -15,7 +15,8 @@ Japanese speech. Read first:
 
 - **Change `pipeline/` only; `paper/` is frozen.** `paper/pipeline/` is the
   pipeline used for the article; `./clausa doctor` checks it against
-  `paper/SHA256SUMS`. No pipeline or runner code branches on the mode: a
+  `paper/SHA256SUMS`. It changed once, for the Japanese mora count of the
+  article's final version (`paper/README.md`). No pipeline or runner code branches on the mode: a
   difference of paper mode lives in `paper/pipeline/` or in `MODES`
   (`runner/run.py`), nowhere else.
 - **A change that must not change outputs** (speed, refactoring, the runner,

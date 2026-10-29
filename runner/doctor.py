@@ -139,8 +139,8 @@ def doctor() -> int:
     if paths.PAPER_PIPELINE_DIR.is_dir():
         changed = paper_changes()
         report(not changed, f"paper/pipeline/ (paper mode) unchanged  {', '.join(changed)}".rstrip(),
-               "paper/ is frozen (paper/README.md): undo the change, or update paper/SHA256SUMS only if the "
-               "paper's outputs stay byte-identical", bad="CHANGED")
+               "paper/ is frozen (paper/README.md): undo the change, or update paper/SHA256SUMS only for a "
+               "change the article's results share", bad="CHANGED")
     else:  # the app zips leave paper/ out
         print("  absent   paper/ (paper mode, --paper-compat): not part of the app; it is in the repository")
     places = paper_switches()

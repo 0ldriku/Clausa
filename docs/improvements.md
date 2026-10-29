@@ -8,19 +8,19 @@ mode, `--paper-compat`, still runs the article's pipeline exactly. See
 
 Scored with the article's RQ1-RQ3 scripts on its 40 English and 40 Japanese
 recordings. "Paper mode" is the article's pipeline run again, so its values
-differ slightly from the article's. "Default" is Clausa 1.0.0.
+differ slightly from the article's. "Default" is Clausa 1.0.1.
 
 | Statistic | Japanese, paper mode | Japanese, default | English, paper mode | English, default |
 |---|---|---|---|---|
 | RQ1 κ, clause boundaries | .673 | **.704** | .749 | **.763** |
 | RQ1 κ, midpoint projection | .677 | **.711** | .827 | **.848** |
 | RQ2 κ, pause location | .689 | **.718** | .855 | **.879** |
-| AR ICC | .910 | **.969** | .952 | .951 |
-| SR ICC | .987 | .985 | .982 | .982 |
-| MLR ICC | .977 | .972 | .962 | .962 |
-| MCPR ICC | .943 | .953 | .965 | .953 |
-| ECPR ICC | .753 | .806 | .902 | **.943** |
-| PR ICC | .970 | .983 | .958 | .952 |
+| AR ICC | .919 | **.975** | .952 | .951 |
+| SR ICC | .993 | .991 | .982 | .982 |
+| MLR ICC | .983 | .980 | .962 | .962 |
+| MCPR ICC | .952 | .963 | .965 | .953 |
+| ECPR ICC | .748 | .807 | .902 | **.943** |
+| PR ICC | .973 | **.988** | .958 | .952 |
 | MCPD ICC | .878 | **.964** | .879 | **.921** |
 | ECPD ICC | .861 | **.970** | .972 | .979 |
 | MPD ICC | .899 | **.985** | .960 | .975 |
@@ -37,7 +37,7 @@ real errors were fixed, not how Clausa will do on new data.
 | Change | Language | Effect |
 |---|---|---|
 | The filler えっと stays one word | Japanese | RQ1 κ +.024 |
-| Speech the aligner finds inside pauses counts as speaking time | both | AR ICC +.051, MCPD +.077, ECPD +.109, MPD +.083 in Japanese |
+| Speech the aligner finds inside pauses counts as speaking time | both | AR ICC +.052, MCPD +.077, ECPD +.109, MPD +.083 in Japanese |
 | English uses that speech instead of the filled-pause classifier | English | MCPD ICC +.036 |
 | Words outside every clause join the next clause | English | RQ2 κ +.024, RQ1 κ +.014, ECPR ICC +.042 |
 | The disfluency detector labels long recordings in full | both | RQ1 κ +.007 |

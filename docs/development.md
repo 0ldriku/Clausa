@@ -108,6 +108,11 @@ scored with the article's RQ scripts against the current default:
 - Scores: `bench/run_rq_variant.sh`. Comparison: `bench/compare_variant.py`.
   Clearly better or worse means both bootstrap intervals exclude 0 and the
   sign holds when any one file is left out.
+- A change to the measure calculators is scored with `CALC_REPO` set: the
+  automatic side then uses this repository's calculators, and the Japanese
+  reference's morae are counted the same way. Japanese scoring needs SudachiPy,
+  which the analysis environment has; or set `CALC_PYTHON` to ja-electra310's
+  Python.
 - Write the decision rule down before the run. Never tune settings on the
   results.
 - For a new platform, compare with the Linux default. Differences under .014

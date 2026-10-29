@@ -6,8 +6,8 @@ annotation files you can open in [Praat](https://www.fon.hum.uva.nl/praat/).
 
 ## Download
 
-- Mac: [Clausa-1.0.0-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.0/Clausa-1.0.0-macos-arm64.zip)
-- Windows: [Clausa-1.0.0-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.0/Clausa-1.0.0-windows-x64.zip)
+- Mac: [Clausa-1.0.1-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-macos-arm64.zip)
+- Windows: [Clausa-1.0.1-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-windows-x64.zip)
 - Linux: the [command line](docs/command-line.md)
 
 ## Requirements
@@ -55,9 +55,6 @@ send us the `logs` folder from the `Clausa` folder.
 
 ## Measures
 
-A pause is a silence of 0.25 s or longer. Japanese counts morae instead of
-syllables.
-
 | Measure | Meaning |
 |---|---|
 | AR | syllables per second of speaking time |
@@ -74,17 +71,27 @@ syllables.
 
 ## Accuracy
 
-Clausa has been improved since the article. On the article's
-recordings it now agrees more closely with human annotation than the article
-reports, especially for Japanese pauses and speaking speed.
+Clausa has been improved since the article.
 [Details](docs/improvements.md).
 
 To get the article's results exactly, see
 [Reproducing the paper](docs/reproducing-the-paper.md).
 
+## Limitations
+
+Clausa's results are automatic and can contain errors. Check them before you
+use them, for example by opening the annotation files in Praat. You are
+responsible for the results you report.
+
+In Japanese, a number written in digits is read one digit at a time. For
+example, 25 (にじゅうご, 5 morae) counts as 2 morae. This changes the measures
+that use morae in recordings with numbers.
+
 ## Speed
 
-Measured on our three computers with recordings of 2-3 minutes.
+Measured on our three computers. One recording is an audio file of 2-3
+minutes. Ten recordings are audio files of 49 s to 4 minutes each, about 20
+minutes of audio in all.
 
 | Computer | One recording | Ten recordings |
 |---|---|---|
@@ -97,6 +104,12 @@ Measured on our three computers with recordings of 2-3 minutes.
 
 Analyse all recordings of one study on the same computer. Different computers
 can give slightly different results.
+
+## Future plans
+
+Clausa will support more languages than English and Japanese. To make that
+possible, we plan to make the clause segmentation customisable for each
+language, or to let an LLM assistant segment the clauses.
 
 ## For programmers
 

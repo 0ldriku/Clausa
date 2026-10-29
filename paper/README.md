@@ -3,10 +3,12 @@
 `paper/pipeline/` is what `--paper-compat` runs. On the same machine and
 software its outputs are identical to the pipeline used for the article.
 
-It is never changed. Every change goes to `pipeline/`. `./clausa doctor`
-checks these files against `SHA256SUMS`. A fix that paper mode must have too,
-such as a crash on a new platform, must keep the article's outputs identical
-and update `SHA256SUMS` on purpose.
+Every change goes to `pipeline/`. `./clausa doctor` checks these files against
+`SHA256SUMS`. A fix that paper mode must have too, such as a crash on a new
+platform, must keep the article's outputs identical and update `SHA256SUMS` on
+purpose. Its one change to outputs is the Japanese mora count, which the
+article's final version also uses: morae come from each word's kana reading,
+as in `pipeline/`.
 
 ## How it differs from pipeline/
 

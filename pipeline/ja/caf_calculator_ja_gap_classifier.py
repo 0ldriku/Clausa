@@ -13,13 +13,65 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from itertools import accumulate
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
 from praatio import textgrid
+from sudachipy import dictionary as sudachi_dictionary
+from sudachipy import tokenizer as sudachi_tokenizer
+
+_SUDACHI = None
+# Small kana join the kana before them; ッ, ン and ー are morae of their own.
+SMALL_KANA = set("ァィゥェォャュョヮ")
+
+
+def _tokenize(text: str):
+    global _SUDACHI
+    if _SUDACHI is None:
+        _SUDACHI = sudachi_dictionary.Dictionary(dict="core").create()
+    return _SUDACHI.tokenize(text, sudachi_tokenizer.Tokenizer.SplitMode.C)
+
+
+def kana_readings(words: List[str]) -> List[str]:
+    """Each word's katakana reading (SudachiDict-core), read together with the words
+    around it, 200 words at a time. A word the dictionary reads as one with its
+    neighbour, or leaves partly unread, is read alone; unknown words keep their spelling."""
+    readings: List[str] = []
+    for s in range(0, len(words), 200):
+        chunk = words[s:s + 200]
+        ends = list(accumulate(len(w) for w in chunk))
+        out = [""] * len(chunk)
+        alone: Set[int] = set()
+        for m in _tokenize("".join(chunk)):
+            first, last = bisect_right(ends, m.begin()), bisect_left(ends, m.end())
+            if first == last:
+                out[first] += m.reading_form()
+            else:
+                alone.update(range(first, last + 1))
+        for i, reading in enumerate(out):
+            if i in alone or not all("ァ" <= ch <= "ヺ" or ch == "ー" for ch in reading):
+                out[i] = "".join(m.reading_form() for m in _tokenize(chunk[i]))
+        readings.extend(out)
+    return readings
+
+
+def count_mora(reading: str) -> int:
+    """Morae in a word's kana reading, at least one. A character left unread (e.g. a
+    Latin letter the dictionary does not know) counts one."""
+    count = 0
+    for ch in reading:
+        if "ぁ" <= ch <= "ゖ":
+            ch = chr(ord(ch) + 0x60)  # hiragana to katakana
+        if ch in SMALL_KANA:
+            continue
+        if "ァ" <= ch <= "ヺ" or ch == "ー" or ch.isalnum():
+            count += 1
+    return max(count, 1)
 
 
 @dataclass
@@ -77,8 +129,6 @@ class TextGridReaderJA:
     }
     FILLER_MARKERS = {"<filler_speech>", "<filler>", "filler_speech"}
 
-    SMALL_KANA = set("ぁぃぅぇぉゃゅょゎァィゥェォャュョヮっッー")
-
     def __init__(self, filepath: str):
         self.filepath = filepath
         self.file_id = Path(filepath).stem
@@ -117,12 +167,14 @@ class TextGridReaderJA:
                 end=float(entry.end),
                 text=text,
                 is_pause=is_pause,
-                mora_count=0 if (is_pause or is_filler_marker) else self._count_mora(text),
             )
             self.words.append(interval)
             if (not is_pause) and (not is_filler_marker):
-                self.total_mora += interval.mora_count
                 content_words.append(interval)
+
+        for word, reading in zip(content_words, kana_readings([w.text for w in content_words])):
+            word.mora_count = count_mora(reading)
+        self.total_mora = sum(w.mora_count for w in content_words)
 
         if content_words:
             self.analysis_start = float(content_words[0].start)
@@ -139,16 +191,6 @@ class TextGridReaderJA:
                     self.clauses.append(
                         ClauseInterval(start=float(entry.start), end=float(entry.end), text=txt)
                     )
-
-    def _count_mora(self, text: str) -> int:
-        count = 0
-        for ch in text:
-            if ch.isspace():
-                continue
-            if ch in self.SMALL_KANA:
-                continue
-            count += 1
-        return max(count, 1) if text else 0
 
     def get_pauses(self, min_duration: float = 0.25) -> List[PauseInterval]:
         pauses = []
