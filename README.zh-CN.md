@@ -27,21 +27,21 @@ Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluenc
 | 可用空间 | 20 GB | 30 GB |
 | 网络 | 首次启动时需要，下载 8.3 GB | 首次启动时需要，下载 11.8 GB |
 
-一切都在您的电脑上运行：Clausa 不收集、也不发送任何内容，只在首次启动时联网下载模型。
+一切都在你的电脑上运行：Clausa 不收集也不发送任何内容，只在首次启动时联网下载模型。
 
 ## 安装
 
 **Mac**
 
 1. 解压下载的文件，把 `Clausa` 文件夹移到个人文件夹。
-2. 双击 **First start**。如果 macOS 阻止它运行，打开系统设置 › 隐私与安全，点击**仍要打开**。
+2. 双击 **First start**。如果 macOS 阻止它运行，打开系统设置 › 隐私与安全性，点击**仍要打开**。
 3. 等窗口显示 Ready，然后点击 **Open Clausa**。
 
 之后，打开 **Clausa.app** 即可。
 
 **Windows**
 
-1. 右键单击 zip 文件，选择**全部提取**。
+1. 右键单击 zip 文件，选择**全部解压缩**。
 2. 双击 `Clausa` 文件夹中的 **Clausa.exe**。如果 Windows 显示“Windows
    已保护你的电脑”，点击**更多信息**，再点击**仍要运行**。
 3. 等窗口显示 Ready，然后点击 **Open Clausa**。
@@ -81,11 +81,11 @@ Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluenc
 
 要精确得到文章的结果，请参阅[复现论文](docs/reproducing-the-paper.md)（英文）。
 
-## 局限
+## 局限性
 
-Clausa 的结果由程序自动生成，可能有错误。报告之前请先检查，例如在 Praat 中打开标注文件。您对自己报告的结果负责。
+Clausa 的结果由程序自动生成，可能有错误。报告之前请先检查，例如在 Praat 中打开标注文件。你对自己报告的结果负责。
 
-标注文件给出 Clausa 找到的每个单词、pause、disfluency 和 clause 的起止时间。您也可以用它们计算自己的指标。
+标注文件给出 Clausa 找到的每个单词、pause、disfluency 和 clause 的起止时间。你也可以用它们计算自己的指标。
 
 在日语中，用数字写的数会被逐位读出。例如，25（にじゅうご，4 个 mora）只算作 2 个 mora。这会影响含数字的录音中使用 mora 的指标。
 
@@ -97,7 +97,7 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 |---|---|---|
 | Mac：M1 Max，64 GB | 1 分钟 | 3 分钟 |
 | Windows：Ryzen 5 3600，32 GB，RTX 4060 Ti 8 GB | 1.5 分钟 | 5 分钟 |
-| Windows，不用显卡 | 4.5 分钟 | |
+| Windows，不使用显卡 | 4.5 分钟 | |
 | Linux：Ryzen 9 9950X，128 GB，RTX 5090，命令行 | 35 秒 | 1.5 分钟 |
 
 ## 注意
@@ -112,7 +112,7 @@ Clausa 支持英语和日语。它的设计不限于这两种语言，但每一�
 
 ## 帮助
 
-我们只在自己的几台电脑上测试过 Clausa。如果它在您的电脑上无法运行，或出了别的问题，请在 [GitHub](https://github.com/0ldriku/Clausa/issues) 上提交 issue，或发邮件到 oldriku@proton.me。请附上 `Clausa` 文件夹中的 `logs` 文件夹。日志包含录音中识别出的单词，所以只在您可以分享它们时再发送。
+我们只在自己的几台电脑上测试过 Clausa。如果它在你的电脑上无法运行，或出了别的问题，请在 [GitHub](https://github.com/0ldriku/Clausa/issues) 上提交 issue，或发邮件到 oldriku@proton.me。请附上 `Clausa` 文件夹中的 `logs` 文件夹。日志包含录音中识别出的单词，请确认可以分享后再发送。
 
 ## 面向程序员
 
@@ -126,7 +126,7 @@ Clausa 支持英语和日语。它的设计不限于这两种语言，但每一�
 
 ## 引用
 
-如果您使用 Clausa，请引用这篇文章。文章已被录用，即将发表；年份、卷、页码和 DOI 将在正式发表后补充。
+如果你使用 Clausa，请引用这篇文章。文章已被录用，即将发表；年份、卷、页码和 DOI 将在正式发表后补充。
 
 > Lu, J., & Sato, R. (in press). Automatic cross-lingual annotation of
 > clause-based utterance fluency in L2 speech. *Research Methods in Applied
