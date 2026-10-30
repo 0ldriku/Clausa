@@ -66,8 +66,4 @@ Each change was measured on its own, against a rerun of the article's pipeline.
 | English uses that speech instead of the filled-pause classifier | English | MCPD ICC +.036 |
 | Words outside every clause join the next clause | English | RQ2 κ +.024, RQ1 κ +.014, ECPR ICC +.042 |
 | The disfluency detector labels long recordings in full | both | RQ1 κ +.007 |
-| General rules replace rules written for the evaluation recordings | both | no measurable change |
 | A bug fix in splitting Japanese run-on clauses | Japanese | RQ1 κ +.003 |
-
-Clausa no longer removes interview phrases from Japanese recordings. Cut out
-the speech you do not want analysed, such as the interviewer's.
