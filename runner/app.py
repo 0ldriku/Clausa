@@ -22,7 +22,13 @@ Api.get_state() and calls the other Api methods through window.pywebview.api.
   session's own share is the mean over its recordings.
 - Everything the runner prints, and what the app reports itself, goes to the
   log: the window's Log panel (the last LOG_LINES lines), the session's log.txt
-  and the app's log file (paths.LOGS_DIR).
+  and the app's log file (paths.LOGS_DIR). The log is in English.
+- The window says everything in its own language (runner/app_ui/strings.js):
+  what the app tells it (a stage, the device, an error, a notice) goes with a
+  key, and params where needed, beside the English (msg). The language is
+  decided at start (ui_language): CLAUSA_UI_LANGUAGE, else the one chosen in
+  Settings (settings.json's ui_language), else the system's. The native parts
+  (pywebview's dialogs, the Open dialog's filters) take their words from NATIVE.
 
 Runs in the ASR environment, which has pywebview (cli.py starts it there).
 """
@@ -53,17 +59,62 @@ from runner.awake import keep_awake
 from runner.projects import (AUDIO_DIR, CSV_NAME, PROJECT_FILE, Earlier, Project, ProjectError, Recording, Session,
                              DATED_FOLDER, audio_duration, earlier_analyses, list_projects, now_iso, read_measures,
                              trash)
-from runner.run import (AUDIO_EXTS, DECODE_EXTS, GPU_MEMORY, GPU_MEMORY_ERROR, MODES, STAGES, Stopped,
-                        run_pipeline)
+from runner.run import (AUDIO_EXTS, DECODE_EXTS, GPU_MEMORY, GPU_MEMORY_ERROR, MODES, STAGES, GpuOutOfMemory,
+                        Stopped, run_pipeline)
 
 LANGS = {"en": "English", "ja": "Japanese"}
+UI_LANGUAGES = ("en", "ja", "zh-CN")  # the window's languages (runner/app_ui/strings.js)
+COPYRIGHT = "© 2026 Jialiang Lu and Reiko Sato"  # as in the About, LICENSE.md and the app bundles
+LINKS = ("https://github.com/0ldriku/Clausa", "mailto:oldriku@proton.me")  # the About's links (Api.open_url)
+# The words of the window's native parts by language, chosen once at start: a language chosen in
+# Settings shows here at the next start (pywebview copies its words when the window is made).
+# pywebview's own words (its localization keys): the quit confirmation and its buttons (macOS), the
+# Save dialog's title (macOS) and its file filter (Windows). Not the macOS app menu: pywebview adds
+# the name to About, Hide and Quit ("About Clausa"), which fits English word order alone, so the
+# menu bar stays as pywebview has it. The app's own words start with app.: the Open dialog's
+# filters, whose names are letters, digits and spaces only (pywebview reads "Name (*.wav;*.mp3)"),
+# and the default name of a saved log. A language that lacks a word uses the English one.
+NATIVE = {
+    "en": {
+        "global.quitConfirmation": "An analysis is running. Quit and stop it?",
+        "global.quit": "Quit",
+        "global.cancel": "Cancel",
+        "global.saveFile": "Save file",
+        "windows.fileFilter.allFiles": "All files",
+        "app.audio_files": "Audio files",
+        "app.all_files": "All files",
+        "app.log_name": "Clausa log {date}",
+    },
+    "ja": {
+        "global.quitConfirmation": "分析を実行中です。終了して分析を停止しますか？",
+        "global.quit": "終了",
+        "global.cancel": "キャンセル",
+        "global.saveFile": "ファイルを保存",
+        "windows.fileFilter.allFiles": "すべてのファイル",
+        "app.audio_files": "音声ファイル",
+        "app.all_files": "すべてのファイル",
+        "app.log_name": "Clausaログ {date}",
+    },
+    "zh-CN": {
+        "global.quitConfirmation": "分析正在进行。要退出并停止分析吗？",
+        "global.quit": "退出",
+        "global.cancel": "取消",
+        "global.saveFile": "存储文件",
+        "windows.fileFilter.allFiles": "所有文件",
+        "app.audio_files": "音频文件",
+        "app.all_files": "所有文件",
+        "app.log_name": "Clausa 日志 {date}",
+    },
+}
 TRASH = "Recycle Bin" if os.name == "nt" else "Trash"  # where trash() moves things, as the user knows it
+TRASH_KEY = "recycle_bin" if os.name == "nt" else "trash"  # its key in the window (bin.<key>)
+DEVICES = {"mlx": "Mac GPU · MLX", "cuda": "NVIDIA GPU · CUDA", "cpu": "CPU"}  # detect_device's answers, in English
 LOG_LINES = 2000  # kept in memory for the Log panel
 
 # The runner's stages as the window shows them: five steps.
 #   step   1-5; Fillers and Islands share step 4, and decoding (.m4a only) is
 #          counted in step 1 but takes no share of its bar
-#   label  shown in the status bar and the log
+#   label  the stage's one name, in the window and the log (lower case inside a sentence)
 #   share  of the step's bar, against the other stages of that step
 STEPS = {
     "decode": (1, "Reading audio", 0),
@@ -75,6 +126,7 @@ STEPS = {
     "caf": (5, "Measures", 1),
 }
 STEP_COUNT = 5
+STEP_OF = {label: key for key, (_, label, _) in STEPS.items()}  # a failed_stage as saved, back to its key
 
 
 @dataclass(frozen=True)
@@ -122,8 +174,6 @@ SPEED_RANGE = (0.5, 3.0)  # limits of a run's speed factor against STAGE_TIMES
 # others only the stage boundaries move the bars.
 PER_FILE = {"asr_stage1", "mfa_stage2", "clause", "gap", "caf"}
 WRITES = {"mfa_stage2": "words", "clause": "clauses"}  # the TextGrid each stage writes
-FAILED_IN = {"asr_stage1": "Speech recognition", "mfa_stage2": "Word alignment",
-             "clause": "Clause segmentation", "gap": "Filled-pause detection", "caf": "Computing the measures"}
 RUN_DEFAULTS = {k: p.default for k, p in inspect.signature(run_pipeline).parameters.items()
                 if p.default is not inspect.Parameter.empty and k not in ("on_event", "stop")}
 MODE = MODES[RUN_DEFAULTS["paper_compat"]]  # the default mode: the app runs with run_pipeline's defaults
@@ -157,8 +207,34 @@ def fmt_seconds(s: float) -> str:
     return f"{s // 3600} h {s // 60 % 60} min"
 
 
+def msg(key: str | None, text: str, **params) -> dict:
+    """A message for the window: its key in runner/app_ui/strings.js and the values of its
+    placeholders (a value may itself be a message), and the same in English (the log, and
+    what the page shows without a key)."""
+    return {"key": key, "params": params, "text": text}
+
+
+def as_message(exc: Exception) -> dict:
+    """An error as a message: a ProjectError with its key; any other (an OSError) as its English text alone."""
+    if isinstance(exc, ProjectError) and exc.key:
+        return msg(exc.key, str(exc), **exc.params)
+    return msg(None, str(exc))
+
+
+def not_done(error: dict) -> dict:
+    """The answer of a call that could not be done: {"ok": False, "error": the English text,
+    "key": ..., "params": ...} for a message."""
+    return {"ok": False, "error": error["text"], "key": error["key"], "params": error["params"]}
+
+
+def set_error(r: Recording, code: str | None = None, text: str | None = None, **params) -> None:
+    """Why a recording failed (or, with no code, that it did not): the English text, saved for
+    the log and for Clausa 1.0.1, and the code and params by which the window says it."""
+    r.error, r.error_code, r.error_params = text, code, params if code else None
+
+
 def detect_device(started: Callable[[subprocess.Popen], None] | None = None) -> str:
-    """What Stage 1 runs on with --device auto, as the window says it.
+    """What Stage 1 runs on with --device auto: "mlx", "cuda" or "cpu" (DEVICES).
 
     The rule of pipeline/en/asr_mfa_en.py (load_models): MLX on Apple Silicon
     when mlx-qwen3-asr is installed, else CUDA when torch sees a GPU, else the
@@ -170,7 +246,7 @@ def detect_device(started: Callable[[subprocess.Popen], None] | None = None) -> 
     asr_mlx = sys.modules[spec.name] = importlib.util.module_from_spec(spec)  # its dataclass looks itself up there
     spec.loader.exec_module(asr_mlx)
     if asr_mlx.available():
-        return "Mac GPU · MLX"
+        return "mlx"
     try:  # in a child process: importing torch here would cost the app its memory
         with subprocess.Popen([sys.executable, "-c", "import torch; print(torch.cuda.is_available())"],
                               stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True) as proc:
@@ -182,10 +258,90 @@ def detect_device(started: Callable[[subprocess.Popen], None] | None = None) -> 
                 proc.kill()
                 raise
         if out.strip().endswith("True"):
-            return "NVIDIA GPU · CUDA"
+            return "cuda"
     except (OSError, subprocess.SubprocessError):
         pass
-    return "CPU"
+    return "cpu"
+
+
+def ui_language_of(tag: str | None) -> str | None:
+    """A language tag (ja-JP, zh-Hant-TW, en_GB ...) as one of UI_LANGUAGES: Japanese ja; any
+    Chinese zh-CN (Simplified serves readers of Traditional better than English); else en.
+    None for no tag."""
+    tag = (tag or "").strip().replace("_", "-").lower()
+    if not tag:
+        return None
+    if tag == "ja" or tag.startswith("ja-"):
+        return "ja"
+    if tag == "zh" or tag.startswith("zh-"):
+        return "zh-CN"
+    return "en"
+
+
+def system_language() -> str | None:
+    """The user's first preferred language, as a tag: macOS NSLocale.preferredLanguages, Windows
+    GetUserPreferredUILanguages (else GetUserDefaultUILanguage), elsewhere LANGUAGE, LC_ALL,
+    LC_MESSAGES or LANG. None if it cannot be told."""
+    try:
+        if sys.platform == "darwin":
+            from Foundation import NSLocale
+            preferred = NSLocale.preferredLanguages()
+            return str(preferred[0]) if preferred else None
+        if os.name == "nt":
+            return _windows_language()
+    except Exception:
+        return None
+    for name in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(name, "").split(":")[0].split(".")[0]
+        if value and value not in ("C", "POSIX"):
+            return value
+    return None
+
+
+def _windows_language() -> str | None:
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.windll.kernel32
+    count, size = wintypes.ULONG(0), wintypes.ULONG(0)
+    MUI_LANGUAGE_NAME = 0x8
+    if kernel32.GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, ctypes.byref(count), None, ctypes.byref(size)) \
+            and size.value:
+        names = ctypes.create_unicode_buffer(size.value)  # "ja-JP\0en-US\0\0": .value is the first
+        if kernel32.GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, ctypes.byref(count), names, ctypes.byref(size)) \
+                and names.value:
+            return names.value
+    name = ctypes.create_unicode_buffer(85)  # LOCALE_NAME_MAX_LENGTH
+    if kernel32.LCIDToLocaleName(kernel32.GetUserDefaultUILanguage(), name, 85, 0):
+        return name.value
+    return None
+
+
+def ui_language(setting: str | None) -> str:
+    """The window's language at start: CLAUSA_UI_LANGUAGE (a tests' setting), else the one chosen in
+    Settings, else the system's, else English."""
+    return (ui_language_of(os.environ.get("CLAUSA_UI_LANGUAGE"))
+            or (setting if setting in UI_LANGUAGES else None)
+            or ui_language_of(system_language()) or "en")
+
+
+def native(language: str, key: str, **params) -> str:
+    """A word of the native parts (NATIVE) in this language, else in English; {name}s filled from params."""
+    text = NATIVE.get(language, {}).get(key) or NATIVE["en"][key]
+    return text.format(**params) if params else text
+
+
+def native_filter(language: str, key: str, patterns: str) -> str:
+    """A file filter for pywebview's dialogs, "Name (*.wav;*.mp3)": the name in this language
+    where pywebview can read it (letters, digits and spaces), else in English."""
+    name = native(language, key)
+    if not re.fullmatch(r"[\w ]+", name):
+        name = NATIVE["en"][key]
+    return f"{name} ({patterns})"
+
+
+def native_localization(language: str) -> dict:
+    """pywebview's words (its localization dict) in this language."""
+    return {key: native(language, key) for key in NATIVE["en"] if not key.startswith("app.")}
 
 
 def mac_app_name(name: str) -> None:
@@ -205,6 +361,9 @@ def mac_app_name(name: str) -> None:
         info = NSBundle.mainBundle().infoDictionary()
         if info is not None:
             info["CFBundleName"] = name
+            # what the app menu's standard About panel shows, if it reads them after this
+            info["CFBundleShortVersionString"] = info["CFBundleVersion"] = __version__
+            info["NSHumanReadableCopyright"] = COPYRIGHT
         AppKit.NSApplication.sharedApplication()  # checks the app in with Launch Services
         services = ctypes.CDLL("/System/Library/Frameworks/CoreServices.framework/CoreServices")
         cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
@@ -228,6 +387,56 @@ def windows_app_id(app_id: str) -> None:
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(ctypes.c_wchar_p(app_id))
     except (OSError, AttributeError):
+        pass
+
+
+APPEARANCES = ("system", "light", "dark")  # Settings › Appearance; system: the system's light or dark
+LIGHT_BG, DARK_BG = "#fcfcfc", "#0c0c0c"  # the window before the page paints (app.css: gray-1 of each theme)
+
+
+def system_light() -> bool:
+    """Whether the system shows apps light; False if dark or unknown. macOS: AppleInterfaceStyle
+    (Dark when dark), Windows: AppsUseLightTheme."""
+    try:
+        if sys.platform == "darwin":
+            from Foundation import NSUserDefaults
+            return NSUserDefaults.standardUserDefaults().stringForKey_("AppleInterfaceStyle") != "Dark"
+        if os.name == "nt":
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize") as key:
+                return winreg.QueryValueEx(key, "AppsUseLightTheme")[0] != 0
+    except Exception:
+        pass
+    return False
+
+
+def native_appearance(code: str) -> None:
+    """The window's frame in the appearance chosen in Settings (system: the system's). Best effort.
+    macOS: the application's NSAppearance, which the page's prefers-color-scheme follows too.
+    Windows: pywebview gives the title bar the system's theme (BrowserForm.is_dark_theme, asked again
+    when the system's changes); here it answers with the chosen one, and open windows take it now."""
+    try:
+        if sys.platform == "darwin":
+            import AppKit
+            name = {"light": AppKit.NSAppearanceNameAqua, "dark": AppKit.NSAppearanceNameDarkAqua}.get(code)
+            look = AppKit.NSAppearance.appearanceNamed_(name) if name else None
+
+            def apply() -> None:
+                AppKit.NSApplication.sharedApplication().setAppearance_(look)
+            if threading.current_thread() is threading.main_thread():
+                apply()
+            else:
+                from PyObjCTools import AppHelper
+                AppHelper.callAfter(apply)
+        elif os.name == "nt":
+            from webview.platforms import winforms
+            form = winforms.BrowserView.BrowserForm
+            system = form.__dict__.get("_system_dark", form.is_dark_theme)
+            form._system_dark = system
+            form.is_dark_theme = system if code == "system" else (lambda self, dark=code == "dark": dark)
+            for browser in list(winforms.BrowserView.instances.values()):
+                browser.Invoke(winforms.Func[winforms.Type](browser.update_title_bar_theme))
+    except Exception:
         pass
 
 
@@ -478,7 +687,7 @@ class Api:
     own, and a session has its own thread: all state is guarded by one lock.
     Only the public methods are the API (pywebview exposes no names starting
     with _). Calls that the user can get wrong (a name, the Trash) return
-    {"ok": False, "error": message} instead of raising.
+    {"ok": False, "error": message, "key": ..., "params": ...} instead of raising (not_done).
     """
 
     def __init__(self):
@@ -492,6 +701,12 @@ class Api:
         self._window = None
         self._connected = False
         self._settings = self._load_settings()
+        chosen = self._settings.get("ui_language")
+        self._ui_setting = chosen if chosen in UI_LANGUAGES else None  # chosen in Settings; None: the system's
+        self._ui_language = ui_language(self._ui_setting)  # the window's
+        self._native_language = self._ui_language  # the native parts' (NATIVE), fixed at start
+        look = self._settings.get("appearance")
+        self._appearance = look if look in APPEARANCES else "system"
         saved = self._settings.get("projects_dir")
         self._root = Path(saved) if isinstance(saved, str) and os.path.isabs(saved) else paths.PROJECTS_DIR
         self._projects: list[Project] = []
@@ -503,7 +718,7 @@ class Api:
         current = self._settings.get("current")
         self._current: str | None = current if isinstance(current, str) else None
         self._notice = {"id": 0, "text": ""}
-        self._device = ""
+        self._device = ""  # a key of DEVICES once known
         self._device_ready = threading.Event()
         self._device_proc: subprocess.Popen | None = None  # the child asking torch for the GPU, while it runs
         self._reload()
@@ -536,7 +751,11 @@ class Api:
             else:
                 project, recs = None, []
             return {
-                "app": {"version": short_version(), "device": self._device, "sep": os.sep, "trash": TRASH},
+                "app": {"version": short_version(), "version_full": __version__,
+                        "device": DEVICES.get(self._device, ""), "device_key": self._device,
+                        "sep": os.sep, "trash": TRASH, "trash_key": TRASH_KEY,
+                        "ui_language": self._ui_language, "ui_language_setting": self._ui_setting,
+                        "appearance": self._appearance},
                 "settings": {"projects_dir": str(self._root), "projects_dir_short": home_short(self._root)},
                 "projects": [self._project_item(p) for p in self._projects],
                 "earlier": [{"id": e.id, "name": e.dir.name, "language": e.language, "count": len(e.files)}
@@ -562,7 +781,7 @@ class Api:
         if run is None:
             return {"status": "idle", "project_id": None, "project_name": "", "session_dir": None, "csv_path": None,
                     "started": "", "elapsed_s": 0, "eta_s": None, "progress": 0, "stage_index": 0,
-                    "stage_count": STEP_COUNT, "stage_label": "", "current_file": None, "current_name": "",
+                    "stage_count": STEP_COUNT, "stage_label": "", "stage": "", "current_file": None, "current_name": "",
                     "done_count": 0, "failed_count": 0, "total": 0}
         active = run.status in ("running", "stopping")
         elapsed = (run.ended or time.monotonic()) - run.started
@@ -584,6 +803,7 @@ class Api:
             "stage_index": step,
             "stage_count": STEP_COUNT,
             "stage_label": label,
+            "stage": run.stage if step else "",
             "current_file": current,
             "current_name": run.recs[current].name if current in run.recs else "",
             "done_count": sum(r.status == "done" for r in run.recs.values()),
@@ -603,18 +823,57 @@ class Api:
             clauses = session / "clauses" / f"{r.id}.TextGrid"
             for kind, label, path in (("words", "Words TextGrid", words), ("clauses", "Clauses TextGrid", clauses)):
                 exists = path.exists()
-                files.append({"label": label, "path": str(path), "exists": exists, "kind": "file"})
+                files.append({"label": label, "label_kind": kind, "path": str(path), "exists": exists, "kind": "file"})
                 textgrids[kind] = "wip" if kind in r.writing else "yes" if exists else "no"
             if not in_run:
-                files.append({"label": f"Session {session.name}", "path": str(session), "exists": session.is_dir(),
-                              "kind": "dir"})
+                files.append({"label": f"Session {session.name}", "label_kind": "session", "name": session.name,
+                              "path": str(session), "exists": session.is_dir(), "kind": "dir"})
         analysed = None
         if r.status in ("done", "failed") and session is not None:
             analysed = self._session_time(project, session.name)
         return {"id": r.id, "name": r.name, "duration_s": r.duration_s, "status": r.status,
                 "progress": round(r.progress, 1) if r.status != "done" else 100.0, "textgrids": textgrids,
                 "measures": r.measures if r.status == "done" else None, "files": files, "error": r.error,
-                "failed_stage": r.failed_stage, "added": r.added, "analysed": analysed}
+                "error_code": r.error_code, "error_params": r.error_params, "failed_stage": r.failed_stage,
+                "failed_stage_key": STEP_OF.get(r.failed_stage), "added": r.added, "analysed": analysed}
+
+    # ---------- settings ----------
+
+    def set_appearance(self, code: str) -> dict:
+        """Settings › Appearance (APPEARANCES), remembered (settings.json's appearance). The page
+        switches at once (theme.js); the window's frame takes it too (native_appearance)."""
+        if code not in APPEARANCES:
+            return {"ok": False}
+        with self._lock:
+            self._appearance = self._settings["appearance"] = code
+            self._save_settings(tell=True)
+        native_appearance(code)
+        self._log.write(f"Appearance: {code}", show=False)
+        return {"ok": True, "appearance": code}
+
+    def set_ui_language(self, code: str) -> dict:
+        """The window's language, chosen in Settings and remembered (settings.json's ui_language).
+        The page switches at once; the native parts (NATIVE) keep theirs until the next start. If
+        settings.json cannot be written, the language holds until Clausa quits, and a notice says so."""
+        if code not in UI_LANGUAGES:
+            return {"ok": False}
+        with self._lock:
+            self._ui_language = self._ui_setting = self._settings["ui_language"] = code
+            self._save_settings(tell=True)
+        self._log.write(f"Display language: {code}", show=False)
+        return {"ok": True, "ui_language": code}
+
+    def open_url(self, url: str) -> bool:
+        """Open one of the About's links (LINKS) in the browser or the mail app; nothing else."""
+        if url not in LINKS:
+            self._log.write(f"Not opened: {url} (not one of the app's links)", "error", show=False)
+            return False
+        import webbrowser
+        try:
+            return bool(webbrowser.open(url))
+        except Exception as exc:  # webbrowser.Error, OSError
+            self._log.write(f"Could not open {url}: {exc}", "error")
+            return False
 
     # ---------- projects ----------
 
@@ -635,7 +894,7 @@ class Api:
             try:
                 project = Project.create(self._root, name, language)
             except (ProjectError, OSError) as exc:
-                return {"ok": False, "error": str(exc)}
+                return not_done(as_message(exc))
             self._projects.insert(0, project)
             self._current = project.id
             self._settings["current"] = project.id
@@ -649,14 +908,15 @@ class Api:
         with self._lock:
             p = self._project(project_id)
             if p is None:
-                return {"ok": False, "error": "That project is not in the list any more."}
+                return not_done(msg("project.gone", "That project is not in the list any more."))
             if self._busy() and self._run.project is p:
-                return {"ok": False, "error": "The project is being analysed: rename it when the session has ended."}
+                return not_done(msg("project.rename_busy",
+                                    "The project is being analysed: rename it when the session has ended."))
             old = p.name
             try:
                 p.rename(name)
             except (ProjectError, OSError) as exc:
-                return {"ok": False, "error": str(exc)}
+                return not_done(as_message(exc))
             if self._current == old or self._current == project_id:
                 self._current = p.id
                 self._settings["current"] = p.id
@@ -670,15 +930,16 @@ class Api:
         with self._lock:
             p = self._project(project_id)
             if p is None:
-                return {"ok": False, "error": "That project is not in the list any more."}
+                return not_done(msg("project.gone", "That project is not in the list any more."))
             if self._busy() and self._run.project is p:
-                return {"ok": False, "error": "The project is being analysed: stop the session first."}
+                return not_done(msg("project.delete_busy", "The project is being analysed: stop the session first."))
             try:
                 moved = trash(p.folder)
             except OSError as exc:
                 self._log.write(f"Could not move {p.folder} to the {TRASH}: {exc}", "error")
-                return {"ok": False, "error": f"The project could not be moved to the {TRASH} ({exc}). "
-                                              "Its folder is unchanged."}
+                return not_done(msg("project.trash_failed",
+                                    f"The project could not be moved to the {TRASH} ({exc}). Its folder is unchanged.",
+                                    bin=msg(f"bin.{TRASH_KEY}", TRASH), error=str(exc)))
             self._projects.remove(p)
             if self._current == p.id:
                 self._current = self._projects[0].id if self._projects else None
@@ -705,7 +966,7 @@ class Api:
             self._current = None
             self._settings.pop("current", None)  # a project of the old folder
             self._reload()
-            self._save_settings()
+            self._save_settings(tell=True)
         self._log.write(f"Projects folder: {self._root}")
         return str(self._root)
 
@@ -717,8 +978,10 @@ class Api:
         if self._window is None:
             return {"added": 0, "refused": []}
         exts = ";".join(f"*{e}" for e in sorted(AUDIO_EXTS))
+        lang = self._native_language
         chosen = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=True,
-                                                 file_types=(f"Audio files ({exts})", "All files (*.*)"))
+                                                 file_types=(native_filter(lang, "app.audio_files", exts),
+                                                             native_filter(lang, "app.all_files", "*.*")))
         return self.add_paths(list(chosen)) if chosen else {"added": 0, "refused": []}
 
     def add_paths(self, items: list) -> dict:
@@ -728,7 +991,8 @@ class Api:
         A file whose name (without extension) is already in the project is refused:
         the pipeline names its results by it. Returns {"added": n, "refused": [messages]}.
         """
-        found, refused = [], []
+        found, refused = [], []  # refused: messages (msg)
+        exts = ", ".join(sorted(AUDIO_EXTS))
         for item in items or []:
             path = Path(str(item)).expanduser()
             if path.is_dir():
@@ -736,25 +1000,30 @@ class Api:
                                 if p.is_file() and p.suffix.lower() in AUDIO_EXTS and not p.name.startswith("."))
             elif path.is_file() and path.suffix.lower() in AUDIO_EXTS:
                 found.append(path)
+            elif path.is_file():
+                refused.append(msg("refused.not_audio", f"{path.name}: not an audio file ({exts})",
+                                   file=path.name, exts=exts))
             else:
-                refused.append(f"{path.name}: not an audio file ({', '.join(sorted(AUDIO_EXTS))})"
-                               if path.is_file() else f"{path}: not found")
+                refused.append(msg("refused.not_found", f"{path}: not found", path=str(path)))
         found = list(dict.fromkeys(Path(os.path.abspath(p)) for p in found))
         added = []
         with self._adding:
             with self._lock:
                 kind, project = self._view()
                 if kind != "project":
-                    refused = ["Create or choose a project first, then add recordings to it."] if found or refused else []
+                    refused = [msg("refused.no_project", "Create or choose a project first, then add recordings to it.")
+                               ] if found or refused else []
                     plan = []
                 else:
                     plan, taken = project.plan_add(found)
-                    refused += taken
+                    refused += [as_message(exc) for exc in taken]
             for src, rec_id, audio in plan:  # outside the lock: a copy can take a while
                 try:
                     dst = project.copy_in(src, audio)
                 except (ProjectError, OSError) as exc:
-                    refused.append(f"{src.name}: could not be copied into the project ({exc})")
+                    refused.append(msg("refused.copy_failed",
+                                       f"{src.name}: could not be copied into the project ({exc})",
+                                       file=src.name, error=as_message(exc)))
                     continue
                 added.append(Recording(rec_id, src.name, str(src), now_iso(), duration_s=audio_duration(dst), audio=audio))
             if added:
@@ -767,11 +1036,15 @@ class Api:
         if added:
             names = ", ".join(r.name for r in added[:5]) + (f" and {len(added) - 5} more" if len(added) > 5 else "")
             self._log.write(f"Added to {project.name}: {names}")
-        for s in refused:
-            self._log.write(f"Not added: {s}")
-        if refused:
-            self._note(refused[0] if len(refused) == 1 else f"{len(refused)} files were not added: {refused[0]} (and more in the log)")
-        return {"added": len(added), "refused": refused}
+        for m in refused:
+            self._log.write(f"Not added: {m['text']}")
+        if len(refused) == 1:
+            self._note(refused[0])
+        elif refused:
+            self._note(msg("notice.not_added_many",
+                           f"{len(refused)} files were not added: {refused[0]['text']} (and more in the log)",
+                           n=len(refused), first=refused[0]))
+        return {"added": len(added), "refused": [m["text"] for m in refused]}
 
     def remove(self, rec_id: str) -> bool:
         """Remove a recording from the project shown: its row, its CSV row and its copy (to the Trash).
@@ -797,8 +1070,9 @@ class Api:
 
     # ---------- sessions ----------
 
-    def start(self) -> bool:
-        """Analyse every recording of the project shown that is not done (New and Failed ones)."""
+    def start(self) -> bool | dict:
+        """Analyse every recording of the project shown that is not done (New and Failed ones);
+        as _start_session answers."""
         with self._lock:
             kind, p = self._view()
             if kind != "project":
@@ -806,7 +1080,7 @@ class Api:
             recs = [r for r in p.recordings if r.status in ("new", "failed")]
         return self._start_session(p, recs)
 
-    def analyse_again(self, rec_ids: list | None = None) -> bool:
+    def analyse_again(self, rec_ids: list | None = None) -> bool | dict:
         """Analyse these recordings again (all of the project shown if none are given).
 
         A new result replaces the row when the session ends; the earlier sessions'
@@ -820,8 +1094,9 @@ class Api:
             recs = [r for r in p.recordings if wanted is None or r.id in wanted]
         return self._start_session(p, recs)
 
-    def _start_session(self, p: Project, recs: list[Recording]) -> bool:
-        """Analyse recordings of a project in a new session folder.
+    def _start_session(self, p: Project, recs: list[Recording]) -> bool | dict:
+        """Analyse recordings of a project in a new session folder: True once it runs, False if there
+        is nothing to start, {"ok": False, ...} (not_done) if its folder could not be made.
 
         The lock is held only to pick the recordings and register the session, so a
         second Start finds it and returns False (one session at a time, whichever
@@ -835,26 +1110,36 @@ class Api:
                 return False
             # A recording whose copy is missing, or cannot be read as audio, fails here: the runner
             # works stage by stage, and such a file would stop the session for all the others.
-            bad = {}
+            bad = {}  # id -> (failed_stage, code, error, params)
             for r in recs:
                 audio = p.audio_path(r)
                 if not audio.is_file():
-                    bad[r.id] = (None, f"The project's copy of this recording is missing ({AUDIO_DIR}/{r.audio}). "
-                                       "Remove it and add the file again.")
+                    copy = f"{AUDIO_DIR}/{r.audio}"
+                    bad[r.id] = (None, "copy_missing", f"The project's copy of this recording is missing ({copy}). "
+                                                       "Remove it and add the file again.", {"file": copy})
                 elif audio_duration(audio) is None:
-                    bad[r.id] = (STEPS["decode"][1], "This file could not be read as audio (it is empty or damaged), "
-                                                     "so it was not analysed. Remove it and add a working copy.")
+                    bad[r.id] = (STEPS["decode"][1], "unreadable",
+                                 "This file could not be read as audio (it is empty or damaged), "
+                                 "so it was not analysed. Remove it and add a working copy.", {})
             for r in recs:
                 if r.id in bad:
-                    r.failed_stage, r.error = bad[r.id]
+                    r.failed_stage, code, text, params = bad[r.id]
+                    set_error(r, code, text, **params)
                     # Not analysed now: no session's files are its results any more.
                     r.status, r.measures, r.last_session = "failed", None, None
                     self._log.write(f"{r.name}: {r.error}", "error")
             if bad:
                 names = [r.name for r in recs if r.id in bad]
-                self._note(f"{names[0]}{f' and {len(names) - 1} more' if len(names) > 1 else ''}: "
-                           f"{'could not be read as audio' if all(bad[r.id][0] for r in recs if r.id in bad) else 'missing or unreadable'}"
-                           f"{', so it was not analysed' if len(names) == 1 else ', so they were not analysed'}")
+                more = len(names) - 1
+                unreadable = all(bad[r.id][0] for r in recs if r.id in bad)  # all there, none readable
+                what = "could not be read as audio" if unreadable else "missing or unreadable"
+                if more:
+                    self._note(msg("notice.unreadable_many" if unreadable else "notice.missing_many",
+                                   f"{names[0]} and {more} more: {what}, so they were not analysed",
+                                   name=names[0], n=more))
+                else:
+                    self._note(msg("notice.unreadable_one" if unreadable else "notice.missing_one",
+                                   f"{names[0]}: {what}, so it was not analysed", name=names[0]))
                 self._write_csv(p)
             recs = [r for r in recs if r.id not in bad]
             if not recs:
@@ -864,7 +1149,8 @@ class Api:
                 session_dir = p.new_session_dir()
             except OSError as exc:
                 self._log.write(f"Could not make a session folder in {p.folder}: {exc}", "error")
-                raise RuntimeError(f"The project's folder could not be used: {exc}") from exc
+                return not_done(msg("session.folder_failed", f"The project's folder could not be used: {exc}",
+                                    error=str(exc)))
             run = Run(p, session_dir, p.language, {r.id: r for r in sorted(recs, key=lambda r: r.id)})
             # What the runner will announce in its first event (which replaces this), so that the
             # time left is known from the start: it takes a moment to set up.
@@ -874,7 +1160,8 @@ class Api:
             run.done = {key: set() for key in run.stages}
             for r in recs:
                 r.before = r.saved_state()
-                r.status, r.progress, r.measures, r.error, r.failed_stage = "running", 0.0, None, None, None
+                r.status, r.progress, r.measures, r.failed_stage = "running", 0.0, None, None
+                set_error(r)
                 r.writing.clear()
             run.session = Session(session_dir.name, now_iso(), list(run.recs))
             p.sessions.append(run.session)
@@ -901,7 +1188,8 @@ class Api:
                 self._log.stopping = False
                 self._set_confirm_close(False)
             self._log.write(f"Could not prepare the session folder {session_dir}: {exc}", "error")
-            raise RuntimeError(f"The session folder could not be prepared: {exc}") from exc
+            return not_done(msg("session.prepare_failed", f"The session folder could not be prepared: {exc}",
+                                error=str(exc)))
         self._log.start_run(session_dir / "log.txt", self._header(run))
         self._log.write(f"Session started: {len(recs)} recording{'s' if len(recs) > 1 else ''} of {p.name}, "
                         f"{LANGS[run.language]}, in {session_dir}")
@@ -927,7 +1215,7 @@ class Api:
 
     def _work(self, run: Run) -> None:
         """The session's thread: run_pipeline, then the outcome for each recording."""
-        status, error = "done", None
+        status, error, out_of_memory = "done", None, False
         try:
             # The computer does not go to sleep while the session runs (this thread holds the request).
             with keep_awake() as awake:
@@ -939,10 +1227,11 @@ class Api:
             status = "stopped"
         except Exception as exc:  # a stage failed (CalledProcessError) or the run could not start
             status, error = "failed", str(exc) or type(exc).__name__
+            out_of_memory = isinstance(exc, GpuOutOfMemory)
             self._log.write(traceback.format_exc().rstrip(), "error")
         try:
             with self._lock:
-                self._finish(run, status, error)
+                self._finish(run, status, error, out_of_memory)
         except Exception:
             self._log.write(traceback.format_exc().rstrip(), "error")
             with self._lock:
@@ -1004,31 +1293,36 @@ class Api:
     def _file_failed(self, run: Run, r: Recording, stage: str, detail: str) -> None:
         if stage == "gap" and run.language not in MODE.classifier_islands:
             # English measures do not use Stage 4 (runner.run.MODES).
-            self._log.write(f"{r.name}: filled-pause detection failed ({detail}); "
-                            "the English measures do not use it")
+            self._log.write(f"{r.name}: Filled pauses failed ({detail}); "
+                            "the English measures do not use that step")
             return
         if r.status != "running":
             return
         r.status, r.failed_stage = "failed", STEPS[stage][1] if stage in STEPS else None
         r.writing.clear()
         if stage == "asr_stage1" and detail == "No words detected":
-            r.error = ("No speech was found in this recording, so it was skipped. "
-                       "Check that the file holds the learner's speech.")
+            set_error(r, "no_speech", "No speech was found in this recording, so it was skipped. "
+                                      "Check that the file holds the learner's speech.")
         elif stage == "asr_stage1" and GPU_MEMORY_ERROR.search(detail):
-            r.error = GPU_MEMORY
+            set_error(r, "gpu_memory", GPU_MEMORY)
         elif stage == "mfa_stage2" and detail:
             # Also the runner's alignment failures (manifest.json alignment_failed): the file
             # may still get a row in the CSV, on word timings that are not comparable.
-            r.error = (f"Word alignment failed for this recording: {detail.rstrip('.')}. "
-                       "Its measures are not shown; the log has the details.")
+            set_error(r, "alignment_failed", f"Word alignment failed for this recording: {detail.rstrip('.')}. "
+                                             "Its measures are not shown; the log has the details.",
+                      detail=detail.rstrip("."))
         elif stage == "gap":
-            r.error = ("Filled-pause detection failed for this recording, so its pauses were measured "
-                       "without it and are not comparable with the others: it is left out of the project's "
-                       "CSV (the session folder's own CSV still has that row). The log has the details.")
+            set_error(r, "filler_failed",
+                      "Filled pauses failed for this recording, so its pauses were measured "
+                      "without that step and are not comparable with the others: it is left out of the project's "
+                      "CSV (the session folder's own CSV still has that row). The log has the details.")
         else:
-            r.error = f"{FAILED_IN.get(stage, 'A stage')} failed for this recording, so it has no measures. " \
-                      "The log has the details."
-        self._log.write(f"{r.name}: {FAILED_IN.get(stage, stage)} failed: {detail or 'see the output above'}", "error")
+            name = STEPS[stage][1] if stage in STEPS else "A stage"
+            set_error(r, "stage_failed",
+                      f"{name} failed for this recording, so it has no measures. The log has the details.",
+                      stage=msg(f"stage.{stage}" if stage in STEPS else "stage.other", name))
+        self._log.write(f"{r.name}: {STEPS[stage][1] if stage in STEPS else stage} failed: "
+                        f"{detail or 'see the output above'}", "error")
 
     @staticmethod
     def _shares(run: Run) -> dict:
@@ -1118,8 +1412,9 @@ class Api:
         return next((f for f in run.order if f not in done and f in run.recs
                      and run.recs[f].status == "running"), None)
 
-    def _finish(self, run: Run, status: str, error: str | None) -> None:
-        """The session has ended: each recording's outcome, project.json, the project's CSV and the log."""
+    def _finish(self, run: Run, status: str, error: str | None, out_of_memory: bool = False) -> None:
+        """The session has ended: each recording's outcome, project.json, the project's CSV and the log.
+        out_of_memory: it failed for lack of GPU memory (GpuOutOfMemory)."""
         run.ended = time.monotonic()
         elapsed = fmt_seconds(run.ended - run.started)
         p = run.project
@@ -1148,10 +1443,12 @@ class Api:
                     self._file_failed(run, r, "gap", stage4_failed[r.id] or "listed in manifest.json")
                 elif r.id in rows:
                     r.status, r.progress, r.measures = "done", 100.0, rows[r.id]
-                    r.error = r.failed_stage = None
+                    r.failed_stage = None
+                    set_error(r)
                 else:
                     r.status, r.failed_stage = "failed", STEPS["caf"][1]
-                    r.error = "No measures were produced for this recording. The log has the details."
+                    set_error(r, "no_measures",
+                              "No measures were produced for this recording. The log has the details.")
                     self._log.write(f"{r.name}: no row in uf_measures.csv", "error")
             done = sum(r.status == "done" for r in run.recs.values())
             failed = len(run.recs) - done
@@ -1159,15 +1456,22 @@ class Api:
                             + (f", {failed} failed" if failed else "") + f" in {elapsed}",
                             "ok" if not failed else "error")
         else:
-            label = STEPS[run.stage][1] if run.stage else "the preparation"
+            label = STEPS[run.stage][1] if run.stage else None
+            during = label.lower() if label else "the preparation"
             for r in run.recs.values():
                 if r.status == "running":
-                    r.status, r.failed_stage = "failed", STEPS[run.stage][1] if run.stage else None
-                    r.error = GPU_MEMORY if error == GPU_MEMORY else (
-                        f"The session stopped with an error during {label}, so this recording has no measures. "
-                        "The log has the details.")
-            self._log.write(f"The session failed during {label}: {error}", "error")
-            self._log.write(f"Result: failed during {label} · {elapsed}")
+                    r.status, r.failed_stage = "failed", label
+                    if out_of_memory:
+                        set_error(r, "gpu_memory", GPU_MEMORY)
+                    elif label:
+                        set_error(r, "session_error", f"{label} stopped the session with an error, so this "
+                                  "recording has no measures. The log has the details.",
+                                  stage=msg(f"stage.{run.stage}", label))
+                    else:
+                        set_error(r, "session_error_prep", "The session stopped with an error during the preparation, "
+                                  "so this recording has no measures. The log has the details.")
+            self._log.write(f"The session failed during {during}: {error}", "error")
+            self._log.write(f"Result: failed during {during} · {elapsed}")
         # Every recording the session finished (done or failed, also before a Stop) now has this
         # session as its last; those a Stop put back keep theirs.
         back_ids = {r.id for r in back}
@@ -1212,7 +1516,8 @@ class Api:
             kind, view = self._view()
             folder = view.folder if kind == "project" else view.dir if kind == "earlier" else self._root
             if not folder.is_dir():  # moved or in the Trash: it is not made again
-                self._note(f"The folder was not found: {home_short(folder)}")
+                self._note(msg("notice.folder_not_found", f"The folder was not found: {home_short(folder)}",
+                               path=home_short(folder)))
                 return False
         open_path(folder)
         return True
@@ -1243,7 +1548,8 @@ class Api:
             elif kind == "earlier":
                 folder = view.dir
             if folder is not None and not folder.is_dir():
-                self._note(f"The folder was not found: {home_short(folder)}")
+                self._note(msg("notice.folder_not_found", f"The folder was not found: {home_short(folder)}",
+                               path=home_short(folder)))
         if folder is None or not folder.is_dir():
             return False
         open_path(folder)
@@ -1272,7 +1578,8 @@ class Api:
             folder = view.folder if kind == "project" else view.dir if kind == "earlier" else self._root
         chosen = self._window.create_file_dialog(
             webview.FileDialog.SAVE, directory=str(folder if folder.is_dir() else Path.home()),
-            save_filename=f"Clausa log {datetime.now():%Y-%m-%d %H.%M}.txt")
+            save_filename=native(self._native_language, "app.log_name",
+                                 date=f"{datetime.now():%Y-%m-%d %H.%M}") + ".txt")
         if not chosen:
             return False
         target = Path(chosen[0] if isinstance(chosen, (list, tuple)) else chosen)
@@ -1323,7 +1630,8 @@ class Api:
                 r.progress = 100.0 if fid in rows else 0.0
                 r.measures = rows.get(fid)
                 if fid not in rows:
-                    r.error = "This analysis has no measures for this recording. Its log.txt has the details."
+                    set_error(r, "earlier_no_measures",
+                              "This analysis has no measures for this recording. Its log.txt has the details.")
                 recs.append(r)
             self._earlier_recs[e.id] = recs
         return self._earlier_recs[e.id]
@@ -1390,9 +1698,9 @@ class Api:
         folders.append(paths.RESULTS_DIR)
         return [f for f in dict.fromkeys(folders) if f.resolve() != self._root.resolve()]
 
-    def _note(self, text: str) -> None:
-        """A message for the status bar (the page shows it for a few seconds)."""
-        self._notice = {"id": self._notice["id"] + 1, "text": text}
+    def _note(self, message: dict) -> None:
+        """A message (msg) for the status bar: the page shows it for a few seconds."""
+        self._notice = {"id": self._notice["id"] + 1, **message}
 
     @staticmethod
     def _session_pct(run: Run) -> float:
@@ -1406,6 +1714,7 @@ class Api:
         before = r.before or {}
         r.status = before.get("status", "new")
         r.last_session, r.error = before.get("last_session"), before.get("error")
+        r.error_code, r.error_params = before.get("error_code"), before.get("error_params")
         r.failed_stage, r.measures = before.get("failed_stage"), before.get("measures")
         r.progress = 100.0 if r.status == "done" else 0.0
         r.writing.clear()
@@ -1416,7 +1725,7 @@ class Api:
             p.save()
         except OSError as exc:
             self._log.write(f"Could not save {p.folder / PROJECT_FILE}: {exc}", "error")
-            self._note(f"The project could not be saved: {exc}")
+            self._note(msg("notice.save_failed", f"The project could not be saved: {exc}", error=str(exc)))
 
     def _write_csv(self, p: Project) -> int:
         """Regenerate the project's CSV; return its number of rows.
@@ -1434,8 +1743,8 @@ class Api:
             for rec_id in other:
                 r = p.find(rec_id)
                 r.status, r.measures, r.failed_stage = "failed", None, None
-                r.error = ("Its measures were made by another version of Clausa (their CSV has other columns), "
-                           "so they are not in the project's CSV. Analyse it again.")
+                set_error(r, "other_version", "Its measures were made by another version of Clausa (their CSV has "
+                                              "other columns), so they are not in the project's CSV. Analyse it again.")
             self._log.write(f"{p.name}: {len(other)} recording{'s' if len(other) != 1 else ''} left out of "
                             f"{p.csv_path.name}, made by another version of Clausa (other columns): "
                             f"{', '.join(other)}. Analyse {'them' if len(other) != 1 else 'it'} again.", "error")
@@ -1478,7 +1787,7 @@ class Api:
             f"Clausa {__version__}" + (f" (code {code})" if code else ""),
             f"Started: {datetime.now().astimezone():%Y-%m-%d %H:%M:%S %z}",
             f"System: {system_text()}, Python {platform.python_version()}",
-            f"Device: {self._device or 'unknown'} (device auto)",
+            f"Device: {DEVICES.get(self._device, 'unknown')} (device auto)",
             "Environments: " + (f"bundled in {paths.ENVS_DIR}" if paths.ENVS_DIR else "conda")
             + f" ({paths.ASR_ENV}, {paths.MFA_ENV}, {paths.JA_ENV})",
             f"Packages ({paths.ASR_ENV}): {package_versions()}",
@@ -1502,7 +1811,7 @@ class Api:
             self._log.write(f"Could not tell the device: {exc}", "error")
         finally:
             self._device_ready.set()
-        self._log.write(f"Clausa {__version__} · {system_text()} · {self._device or 'device unknown'}")
+        self._log.write(f"Clausa {__version__} · {system_text()} · {DEVICES.get(self._device, 'device unknown')}")
 
     def _load_settings(self) -> dict:
         try:
@@ -1511,16 +1820,22 @@ class Api:
             return {}
         return data if isinstance(data, dict) else {}
 
-    def _save_settings(self) -> None:
-        """settings.json: the projects folder and the project last shown. Keys of earlier versions
-        stay (results_dir: where the earlier analyses are)."""
+    def _save_settings(self, tell: bool = False) -> bool:
+        """settings.json: the projects folder, the project last shown and the window's language if
+        one was chosen (ui_language), and the appearance (appearance). Keys of earlier versions stay (results_dir: where the earlier
+        analyses are). False if it could not be written; tell: say so in the status bar too (a
+        setting the user chose, which then holds only until Clausa quits)."""
         self._settings["projects_dir"] = str(self._root)
         try:
             tmp = paths.APP_SETTINGS.with_suffix(".tmp")
             tmp.write_text(json.dumps(self._settings, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             tmp.replace(paths.APP_SETTINGS)
+            return True
         except OSError as exc:
             self._log.write(f"Could not save the settings in {paths.APP_SETTINGS}: {exc}", "error")
+            if tell:
+                self._note(msg("notice.settings_not_saved", f"The settings could not be saved: {exc}", error=str(exc)))
+            return False
 
     def _set_confirm_close(self, on: bool) -> None:
         """While a session runs, closing the window asks first (pywebview's quit confirmation)."""
@@ -1580,10 +1895,15 @@ def main() -> int:
     import webview
     from webview.dom import DOMEventHandler
 
+    # ?ui=, ?theme=: the page's language and appearance from its first paint, before the bridge is
+    # ready (app.js, theme.js)
+    light = api._appearance == "light" or (api._appearance == "system" and system_light())
+    if sys.platform == "darwin":
+        native_appearance(api._appearance)
     window = webview.create_window(
-        "Clausa", url=str(paths.APP_UI_DIR / "index.html"), js_api=api,
-        width=1280, height=800, min_size=(760, 560), background_color="#0c0c0c",
-        localization={"global.quitConfirmation": "An analysis is running. Quit and stop it?"})
+        "Clausa", url=f"{paths.APP_UI_DIR / 'index.html'}?ui={api._ui_language}&theme={api._appearance}", js_api=api,
+        width=1280, height=800, min_size=(760, 560), background_color=LIGHT_BG if light else DARK_BG,
+        localization=native_localization(api._native_language))
     api._window = window
 
     def loaded() -> None:
@@ -1596,6 +1916,8 @@ def main() -> int:
             api._log.write(traceback.format_exc().rstrip(), "error")
 
     window.events.loaded += loaded
+    if os.name == "nt":  # the title bar: pywebview's form exists once shown
+        window.events.shown += lambda: native_appearance(api._appearance)
 
     def quit_on_signal(signum, frame) -> None:  # Ctrl+C or a kill: close the window, then stop as on closing
         threading.Thread(target=window.destroy, daemon=True).start()

@@ -13,8 +13,8 @@ Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluenc
 
 ## 下载
 
-- Mac：[Clausa-1.0.1-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-macos-arm64.zip)
-- Windows：[Clausa-1.0.1-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-windows-x64.zip)
+- Mac：[Clausa-1.0.2-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-macos-arm64.zip)
+- Windows：[Clausa-1.0.2-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-windows-x64.zip)
 - Linux：[命令行](docs/command-line.md)（英文）
 
 ## 系统要求

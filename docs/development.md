@@ -181,6 +181,7 @@ lists: `container/locks/`, `runner/requirements/macos-lock/`,
 | `CLAUSA_PROJECTS` | `~/Documents/Clausa projects` | the app's projects |
 | `CLAUSA_RESULTS` | `~/Documents/Clausa results` | single runs, shown as Earlier analyses |
 | `CLAUSA_SETTINGS`, `CLAUSA_LOGS` | `settings.json`, `logs/` | the app's settings and logs |
+| `CLAUSA_UI_LANGUAGE` | unset | `en`, `ja` or `zh-CN`: the app window's language |
 | `CLAUSA_JOBS` | `jobs/` | the web interface's jobs |
 | `HF_ENDPOINT` | `https://huggingface.co` | a mirror for the models |
 | `CLAUSA_MFA_BASE_URL` | the mfa-models releases | a mirror for the MFA models |
@@ -218,6 +219,42 @@ pywebview. The page calls the Python class `Api`.
 - On Windows, project names are limited to 60 characters and paths to 259.
 - `runner/awake.py` keeps the computer awake during a session.
 - `./clausa webui` is a separate browser interface for servers.
+
+The window's texts are in `runner/app_ui/strings.js`, one table per language:
+`en`, `ja` and `zh-CN`. A missing text shows in English. The backend sends a
+key and its values beside the English text. The words of the native dialogs
+are in `NATIVE` in `runner/app.py`. The language comes from
+`CLAUSA_UI_LANGUAGE`, else from `ui_language` in `settings.json`, else from the
+system. Settings › Display language sets `ui_language`. The window switches at
+once; the native dialogs follow at the next start. The log stays in English,
+and so do the measures' names and the research terms: clause, pause, filled
+pause, disfluency, fluency, speed, syllable and mora.
+
+The window is dark or light: Settings › Appearance sets `appearance` in
+`settings.json` (`system`, the default, follows the system); the button beside
+Settings switches to the other theme. `theme.js` sets
+`data-theme` on the page before its first paint, and `app.css` gives each theme
+Radix Colors' scales of the same steps. The title bar follows too: on macOS the
+application's appearance, on Windows pywebview's title-bar theme
+(`native_appearance` in `runner/app.py`). Screenshots: `?mock=...&theme=light`.
+
+README.md, README.ja.md and README.zh-CN.md change together; the English is
+the source. The same holds for the tables of `strings.js` and `NATIVE`, and for
+the English, Japanese and Chinese sections of each guide,
+`packaging/*/read_me_first.html`, whose sentences that depend on the build are
+in the builders' `guide_notes()`.
+
+To add a language:
+
+1. Add its table to `strings.js` and to `NATIVE`, with every English key.
+2. Add its code to `UI_LANGUAGES` and `ui_language_of` in `runner/app.py`, to
+   `LANG_TAGS` in `app.js` and to the Settings menu in `index.html`.
+3. Give it fonts in `app.css`, as `ja` and `zh-Hans` have.
+4. Check its keys and placeholders against English, and look at every state of
+   the page with `?mock=...&ui=<code>`.
+5. Translate `README.md` as `README.<code>.md`, add it to the language line
+   of every README and to `APP_PATHS` in `packaging/build_macos.py`, and give
+   each `read_me_first.html` a section and `guide_notes()` its sentences.
 
 ## The app zips
 

@@ -6,28 +6,25 @@
    this file, which serves example data. The backend owns the state; the page polls get_state()
    and patches the DOM in place, so the selection, open menus, focus and the log's scroll position
    survive every poll.
-   Mock views: ?mock=project (default) | running | welcome. Options: &project=<id>, &select=N,
-   &filter=done|running|waiting|failed|new, &side=0|1 (sidebar; default: shown from 1000 px),
-   &log=1, &dialog=new (&name=..., &dlang=ja), &confirm=delete|again, &menu=project|settings,
-   &still=1 (no live ticking, for screenshots). */
+   Every text comes from strings.js through t(); the backend sends keys and codes beside its
+   English (a stage, an error, a notice), and the page says them in its own language: the one the
+   backend names (app.ui_language), or ?ui= until it answers.
+   Mock views: ?mock=project (default) | running | welcome. Options: &ui=en|ja|zh-CN (default en),
+   &project=<id> (or earlier),
+   &select=N, &filter=done|running|waiting|failed|new, &side=0|1 (sidebar; default: shown from
+   1000 px), &log=1, &dialog=new (&name=..., &dlang=ja) | about, &confirm=delete|again|remove,
+   &menu=project|settings, &theme=light|dark|system (theme.js), &still=1 (no live ticking, for screenshots). */
 (function () {
   'use strict';
 
   var CODES = ['AR', 'SR', 'MLR', 'MCPR', 'ECPR', 'PR', 'MCPD', 'ECPD', 'MPD'];
   var DECIMALS = [2, 2, 1, 3, 3, 3, 2, 2, 2];
-  // the nine measures fall into three groups of three: speed, how often pauses come, how long they last
-  var GROUPS = [{ en: 'Speed', ja: 'Speed', from: 0 }, { en: 'Pauses per syllable', ja: 'Pauses per mora', from: 3 }, { en: 'Mean pause duration', ja: 'Mean pause duration', from: 6 }];
-  var NAMES = ['Articulation rate', 'Speech rate', 'Mean length of run', 'Mid-clause', 'End-clause', 'All pauses', 'Mid-clause', 'End-clause', 'All pauses'];
-  // a failed recording's row names the step it stopped in (runner/app.py, STEPS)
-  var FAILED_AT = { 'Reading audio': 'Reading failed', 'Speech recognition': 'Recognition failed', 'Word alignment': 'Alignment failed',
-                    'Clauses': 'Clauses failed', 'Filled pauses': 'Filled pauses failed', 'Pauses': 'Pauses failed', 'Measures': 'Measures failed' };
-  // the running stage in one word, where the progress column is narrow (the status bar has it in full)
-  var SHORT = { 'Speech recognition': 'Recognition', 'Word alignment': 'Alignment', 'Filled pauses': 'Fillers', 'Reading audio': 'Reading' };
-  var LANGS = { en: 'English', ja: 'Japanese' }, TAGS = { en: 'EN', ja: 'JA' };
+  // the nine measures fall into three groups of three: speed, how often pauses come, how long they
+  // last; en and ja are the project's language (syllables or morae), not the window's
+  var GROUPS = [{ en: 'group.speed', ja: 'group.speed', from: 0 }, { en: 'group.pauses_en', ja: 'group.pauses_ja', from: 3 }, { en: 'group.duration', ja: 'group.duration', from: 6 }];
+  var TAGS = { en: 'EN', ja: 'JA' };
   // "waiting" is queued in the current session; "new" was added and has not been analysed
-  var STATUS = { done: 'Done', failed: 'Failed', running: 'Running', waiting: 'Waiting', new: 'New' };
   var FILTERS = ['done', 'running', 'waiting', 'failed', 'new'];
-  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var LEVELS = { info: 'plain', ok: 'ok', error: 'bad' };
   var POLL_ACTIVE_MS = 500, POLL_IDLE_MS = 2000, BRIDGE_WAIT_MS = 1500, NOTICE_MS = 6000;
   // The sidebar is shown from SIDE_MIN_W; while the details panel is open it hides itself unless the
@@ -52,15 +49,120 @@
   var api = null, mock = null;
   // sel: selected recording id; log: drawer open; follow: the log sticks to its bottom; filter: the
   // summary part shown alone; side: the sidebar as the user set it (null: by the window's width);
-  // dialog: New project; confirm: {title, text, ok, danger, action}; renaming: the title is a field
+  // dialog: New project; confirm: {title, text, ok, danger, action}; renaming: the title is a field;
+  // uiWant, themeWant: the language or appearance just chosen in Settings, until the backend's state
+  // names it; about: About
   var S = { state: null, sel: null, log: false, follow: true, notice: '', noticeId: 0, drag: false, pendingSelect: 0,
-            filter: null, side: null, dialog: false, newLang: 'en', confirm: null, renaming: false, shown: null };
+            filter: null, side: null, dialog: false, newLang: 'en', confirm: null, renaming: false, shown: null, uiWant: null,
+            themeWant: null, about: false };
 
   /* ---------- helpers ---------- */
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function pad2(n) { return (n < 10 ? '0' : '') + n; }
-  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many || one + 's'); }
+
+  /* ---------- texts ---------- */
+
+  // The window's language: a table of strings.js; html lang names its script, which picks the
+  // fonts (app.css).
+  var STR = window.STRINGS || { en: {} }, LANG_TAGS = { en: 'en', ja: 'ja', 'zh-CN': 'zh-Hans' };
+  function uiCode(code) { return Object.prototype.hasOwnProperty.call(LANG_TAGS, code) ? code : 'en'; }
+  var UI = uiCode(params.get('ui'));
+  // a text of the window's language, else of English: key by key
+  function lookup(key) {
+    var v = (STR[UI] || {})[key];
+    return v === undefined || v === null || v === '' ? STR.en[key] : v;
+  }
+  function has(key) { return lookup(key) !== undefined; }
+  // A text in the window's language (else in English) with its {name} placeholders filled from
+  // params; one with forms by number takes the form for params.n. A key the table lacks shows
+  // as itself, so that it is seen.
+  function t(key, params) {
+    var v = lookup(key);
+    if (v === undefined) return key;
+    if (typeof v === 'object') v = params && params.n === 1 && v.one != null ? v.one : v.other;
+    return params ? v.replace(/\{(\w+)\}/g, function (s, k) { return k in params ? String(params[k]) : s; }) : v;
+  }
+  // A message from the backend, {key, params, text} (a notice, an error; a param may be a message
+  // too): its key's text, or its English text where the table has no such key (a project saved by
+  // Clausa 1.0.1, a later backend). In English the two must agree: the mock reports a difference.
+  function msgText(m) {
+    if (m == null || typeof m !== 'object') return m == null ? '' : String(m);
+    if (!m.key || !has(m.key)) return m.text == null ? '' : String(m.text);
+    var p = {}, src = m.params || {};
+    Object.keys(src).forEach(function (k) { p[k] = src[k] !== null && typeof src[k] === 'object' ? msgText(src[k]) : src[k]; });
+    var out = t(m.key, p);
+    if (mock && UI === 'en' && m.text != null && out !== String(m.text) && window.console) console.warn('strings.js ' + m.key + ': "' + out + '", the backend: "' + m.text + '"');
+    return out;
+  }
+  // The answer of a call that could not be done, {ok: false, error, key, params}, as text.
+  function failText(res, fallback) { return (res && msgText({ key: res.key, params: res.params, text: res.error })) || fallback; }
+  // Start and Analyse again answer true, false (nothing to start) or why the session could not start.
+  function started(res) { if (res && res.ok === false) { var text = failText(res, ''); if (text) note(text); } }
+  // A word the backend sends as a key beside its English (a stage, the device, the Trash).
+  function word(prefix, key, text) { return key && has(prefix + key) ? t(prefix + key) : text == null ? '' : String(text); }
+  // A runner stage's key (runner/app.py, STEPS); from its English name where only that is known (a
+  // failed_stage saved in project.json).
+  function stepKey(key, label) {
+    if (key || !label) return key || null;
+    for (var k in STR.en) if (k.indexOf('stage.') === 0 && STR.en[k] === label) return k.slice(6);
+    return null;
+  }
+
+  // An element's own text, beside the icon it may hold.
+  function setOwnText(el, text) {
+    for (var n = el.firstChild; n; n = n.nextSibling) {
+      if (n.nodeType === 3 && n.nodeValue.trim()) { if (n.nodeValue !== text) n.nodeValue = text; return; }
+    }
+    el.appendChild(document.createTextNode(text));
+  }
+  // A sentence around elements of its own (a link, a path): el's [data-slot] children keep their
+  // node, and so their listeners and contents, at the place of their {slot} in the text (at its
+  // end if the text lacks it). A slot that has the focus keeps it: taking a node out of the page
+  // blurs it, and putting it back does not focus it again.
+  function fillSlots(el, text) {
+    if (el._text === text) return;
+    var focused = document.activeElement, had = focused && focused !== el && el.contains(focused);
+    var slots = {};
+    Array.prototype.forEach.call(el.querySelectorAll('[data-slot]'), function (n) { slots[n.getAttribute('data-slot')] = n; });
+    el.textContent = '';
+    text.split(/(\{\w+\})/).forEach(function (part) {
+      var s = /^\{(\w+)\}$/.exec(part);
+      if (s && slots[s[1]]) { el.appendChild(slots[s[1]]); delete slots[s[1]]; }
+      else if (part) el.appendChild(document.createTextNode(part));
+    });
+    for (var k in slots) el.appendChild(slots[k]);
+    el._text = text;
+    if (had && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  }
+  // The page's fixed texts (index.html): data-i18n (the text, or a sentence around [data-slot]
+  // elements), data-i18n-title, data-i18n-aria (aria-label) and data-i18n-placeholder.
+  function applyStatic() {
+    Array.prototype.forEach.call(document.querySelectorAll('[data-i18n]'), function (el) {
+      var text = t(el.getAttribute('data-i18n'));
+      if (el.querySelector('[data-slot]')) fillSlots(el, text);
+      else setOwnText(el, text);
+    });
+    [['title', 'title'], ['aria', 'aria-label'], ['placeholder', 'placeholder']].forEach(function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll('[data-i18n-' + a[0] + ']'), function (el) {
+        el.setAttribute(a[1], t(el.getAttribute('data-i18n-' + a[0])));
+      });
+    });
+  }
+  // Another language for the window: html lang, then everything drawn again (patch() and
+  // fillSlots() redraw only what changed, so their memory of the old texts goes first). A notice
+  // in the old language goes too.
+  function setLanguage(code) {
+    code = uiCode(code);
+    if (code === UI && document.documentElement.lang === LANG_TAGS[code]) return false;
+    UI = code;
+    document.documentElement.lang = LANG_TAGS[code];
+    Array.prototype.forEach.call(document.querySelectorAll('*'), function (el) { el._html = undefined; el._text = undefined; });
+    S.notice = '';
+    applyStatic();
+    return true;
+  }
+
   function baseName(p) { var parts = String(p || '').split(/[\\/]+/).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; }
   function fmtDur(s) {
     if (s == null || !isFinite(s)) return '';
@@ -71,22 +173,19 @@
   function fmtElapsed(s) {
     if (s == null || !isFinite(s)) return '';
     s = Math.round(s);
-    if (s < 60) return s + ' s';
-    if (s < 3600) return Math.floor(s / 60) + ' min' + (s % 60 ? ' ' + (s % 60) + ' s' : '');
-    return Math.floor(s / 3600) + ' h ' + (Math.floor(s / 60) % 60) + ' min';
-  }
-  function fmtEta(s) {
-    if (s == null || !isFinite(s) || s < 0) return '';
-    if (s < 10) return 'a few seconds';
-    if (s < 55) return 'about ' + Math.round(s / 10) * 10 + ' s';
-    if (s < 3570) return 'about ' + Math.max(1, Math.round(s / 60)) + ' min';
-    var m = Math.round(s / 60);
-    return 'about ' + Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '');
+    if (s < 60) return t('time.s', { s: s });
+    if (s < 3600) return s % 60 ? t('time.min_s', { m: Math.floor(s / 60), s: s % 60 }) : t('time.min', { m: Math.floor(s / 60) });
+    return t('time.h_min', { h: Math.floor(s / 3600), m: Math.floor(s / 60) % 60 });
   }
   // eta_s: seconds left, null when unknown, 0 once the estimate has run out
   function etaText(s) {
     if (s == null || !isFinite(s)) return '';
-    return s <= 0 ? 'almost done' : fmtEta(s) + ' left';
+    if (s <= 0) return t('eta.almost_done');
+    if (s < 10) return t('eta.seconds');
+    if (s < 55) return t('eta.s', { s: Math.round(s / 10) * 10 });
+    if (s < 3570) return t('eta.min', { m: Math.max(1, Math.round(s / 60)) });
+    var m = Math.round(s / 60);
+    return m % 60 ? t('eta.h_min', { h: Math.floor(m / 60), m: m % 60 }) : t('eta.h', { h: Math.floor(m / 60) });
   }
   function fmtTime(t) {
     if (typeof t !== 'number') return String(t == null ? '' : t);
@@ -99,12 +198,13 @@
     var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
     if (!m) return '';
     var now = new Date(), today = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
-    if (m[0] === today) return 'today';
-    return Number(m[3]) + ' ' + MONTHS[Number(m[2]) - 1] + (year || Number(m[1]) !== now.getFullYear() ? ' ' + m[1] : '');
+    if (m[0] === today) return t('date.today');
+    var p = { d: Number(m[3]), m: Number(m[2]), month: t('month.' + Number(m[2])), year: m[1] };
+    return t(year || Number(m[1]) !== now.getFullYear() ? 'date.day_year' : 'date.day', p);
   }
   // the line under a recording's name: the date it was added (New) or last analysed
   function whenText(r) {
-    if (r.status === 'new') return r.added ? 'added ' + dayText(r.added) : '';
+    if (r.status === 'new') return r.added ? t('row.added', { date: dayText(r.added) }) : '';
     return r.status === 'done' || r.status === 'failed' ? dayText(r.analysed) : '';
   }
   function fmtMeasure(v, k) {
@@ -166,7 +266,13 @@
     if (!r.measures) return null;
     return CODES.map(function (k, j) { return fmtMeasure(r.measures[k], j); });
   }
-  function failedText(r) { return FAILED_AT[r.failed_stage] || 'Failed'; }
+  // a failed recording's row names the step it stopped in
+  function failedText(r) { var k = stepKey(r.failed_stage_key, r.failed_stage); return t(k && has('failed_at.' + k) ? 'failed_at.' + k : 'failed_at.other'); }
+  // why it failed: by its code (err.<code>); as saved where it has none (Clausa 1.0.1)
+  function errorText(r) { return msgText({ key: r.error_code ? 'err.' + r.error_code : '', params: r.error_params, text: r.error }) || t('details.error_none'); }
+  // the running stage, in full and in one word (where the progress column is narrow)
+  function stageText(run) { return word('stage.', stepKey(run.stage, run.stage_label), run.stage_label); }
+  function stageShort(run) { var k = stepKey(run.stage, run.stage_label); return k && has('short.' + k) ? t('short.' + k) : stageText(run) || t('stage.unknown'); }
   function groupStart(k) { return k === 3 || k === 6; }
   function counts(st) {
     var run = runOf(st), c = { all: 0, done: 0, running: 0, waiting: 0, failed: 0, new: 0 };
@@ -202,6 +308,7 @@
     if (params.get('side') === '0' || params.get('side') === '1') S.side = params.get('side') === '1';
     refresh().then(function () {
       if (params.get('dialog') === 'new') openDialog(params.get('name') || '', params.get('dlang') === 'ja' ? 'ja' : 'en');
+      if (params.get('dialog') === 'about') openAbout();
       if (params.get('confirm') === 'delete') confirmDelete();
       if (params.get('confirm') === 'again') confirmAgainAll();
       if (params.get('confirm') === 'remove' && recsOf(S.state).length) confirmRemove(recsOf(S.state)[0]);
@@ -217,7 +324,7 @@
     try { p = Promise.resolve(api[name].apply(api, args)); } catch (e) { p = Promise.reject(e); }
     return p.then(function (v) { refresh(); return v; }, function (e) {
       refresh();
-      note('Something went wrong: ' + ((e && e.message) || String(e)));
+      note(t('notice.went_wrong', { message: (e && e.message) || String(e) }));
       return null;
     });
   }
@@ -253,6 +360,10 @@
   function render() {
     var st = S.state;
     if (!st) return;
+    // the window's language: as chosen just now (until the backend agrees), else the backend's
+    var lang = (st.app || {}).ui_language;
+    if (S.uiWant && lang === S.uiWant) S.uiWant = null;
+    if (S.uiWant || lang) setLanguage(S.uiWant || lang);
     var p = projOf(st), shown = p ? p.id : null;
     if (shown !== S.shown) {  // another project: its own selection, filter and title
       if (S.shown !== null) { S.sel = null; S.filter = null; }
@@ -267,7 +378,8 @@
     if (S.sel !== null && !findRec(S.sel)) S.sel = null;
     if (st.notice && st.notice.id && st.notice.id !== S.noticeId) {
       S.noticeId = st.notice.id;
-      if (st.notice.text) note(st.notice.text);
+      var text = msgText(st.notice);
+      if (text) note(text);
     }
     var none = !p, wel = $('welcome'), bar = document.querySelector('.toolbar');
     $('win').classList.toggle('no-projects', none);
@@ -281,6 +393,7 @@
     renderSidebar(st);
     renderBars(st);
     renderDialog(st);
+    renderAbout(st);
     if (none) return;
     renderSummary(st);
     renderHead(st);
@@ -296,11 +409,11 @@
     return user && !(S.sel !== null && w < SIDE_AND_DETAILS_W);
   }
   function applySide() {
-    var open = sideOpen(), t = $('sideToggle');
+    var open = sideOpen(), b = $('sideToggle'), label = t(open ? 'side.hide' : 'side.show');
     $('win').classList.toggle('side-closed', !open);
-    t.setAttribute('aria-expanded', String(open));
-    t.setAttribute('aria-label', open ? 'Hide the sidebar' : 'Show the sidebar');
-    t.title = open ? 'Hide the sidebar' : 'Show the sidebar';
+    b.setAttribute('aria-expanded', String(open));
+    b.setAttribute('aria-label', label);
+    b.title = label;
   }
 
   function ring(pct) {
@@ -309,55 +422,73 @@
   }
   function sideItem(p, cur, earlier) {
     var side = '';
-    if (p.status === 'running') side = '<span class="prun" title="Analysing: ' + Math.floor(p.progress) + '% of this session">' + ring(p.progress) + '<span>' + Math.floor(p.progress) + '%</span></span>';
-    else if (p.failed) side = '<span class="pfail" title="' + plural(p.failed, 'failed recording') + '">' + p.failed + '</span>';
+    if (p.status === 'running') side = '<span class="prun" title="' + esc(t('side.analysing', { pct: Math.floor(p.progress) })) + '">' + ring(p.progress) + '<span>' + Math.floor(p.progress) + '%</span></span>';
+    else if (p.failed) side = '<span class="pfail" title="' + esc(t('side.failed', { n: p.failed })) + '">' + p.failed + '</span>';
     var lang = p.language === 'ja' ? 'ja' : 'en';
     return '<button type="button" class="proj' + (earlier ? ' earlier' : '') + '" data-project="' + esc(p.id) + '" data-key="p-' + esc(p.id) + '"' +
-      (cur && cur.id === p.id ? ' aria-current="page"' : '') + ' title="' + esc(earlier ? 'Analysed on ' + p.name + ' (read-only)' : p.name) + '">' +
+      (cur && cur.id === p.id ? ' aria-current="page"' : '') + ' title="' + esc(earlier ? t('side.earlier_title', { name: p.name }) : p.name) + '">' +
       '<span class="pn">' + esc(p.name) + '</span>' +
-      '<span class="pm">' + (p.language ? '<span class="tag" title="' + LANGS[lang] + '">' + TAGS[lang] + '</span>' : '') + plural(p.count, 'recording') + '</span>' +
+      '<span class="pm">' + (p.language ? '<span class="tag" title="' + esc(t('lang.' + lang)) + '">' + TAGS[lang] + '</span>' : '') + esc(t('count.recordings', { n: p.count })) + '</span>' +
       (side ? '<span class="ps">' + side + '</span>' : '') + '</button>';
   }
   function renderSidebar(st) {
     var P = st.projects || [], E = st.earlier || [], cur = projOf(st), set = st.settings || {};
-    patch($('projList'), P.map(function (p) { return sideItem(p, cur, false); }).join('') || '<p class="side-empty">None yet</p>');
+    patch($('projList'), P.map(function (p) { return sideItem(p, cur, false); }).join('') || '<p class="side-empty">' + esc(t('side.none')) + '</p>');
     $('earlierLabel').hidden = $('earlierList').hidden = !E.length;
     patch($('earlierList'), E.map(function (e) { return sideItem(e, cur, true); }).join(''));
     var dir = set.projects_dir_short || set.projects_dir || '';
     setText($('folderPath'), dir);
-    $('settingsBtn').title = 'Projects are saved in ' + dir;
+    $('settingsBtn').title = t('settings.saved_in', { folder: dir });
     setDisabled($('changeFolderBtn'), isActive(runOf(st)));
-    $('changeFolderBtn').title = isActive(runOf(st)) ? 'Not while a session runs' : '';
+    $('changeFolderBtn').title = isActive(runOf(st)) ? t('settings.not_while_running') : '';
+    Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-ui]'), function (b) {
+      var on = String(b.getAttribute('data-ui') === UI);
+      if (b.getAttribute('aria-checked') !== on) b.setAttribute('aria-checked', on);
+    });
+    // the appearance: as chosen just now (until the backend agrees), else the backend's
+    var look = (st.app || {}).appearance || 'system';
+    if (S.themeWant && look === S.themeWant) S.themeWant = null;
+    look = S.themeWant || look;
+    window.clausaTheme(look);
+    themeLabel();
+    Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-theme-choice]'), function (b) {
+      var on = String(b.getAttribute('data-theme-choice') === look);
+      if (b.getAttribute('aria-checked') !== on) b.setAttribute('aria-checked', on);
+    });
   }
 
+  // The status bar: a sentence, or parts joined by ' · '.
   function statusText(st) {
     var run = runOf(st), set = st.settings || {}, p = projOf(st), n = run.total || 0, k = run.done_count || 0, f = run.failed_count || 0;
-    if (!(st.projects || []).length && !p) return 'Ready · projects are saved in ' + (set.projects_dir_short || set.projects_dir || '');
+    if (!(st.projects || []).length && !p) return t('status.welcome', { folder: set.projects_dir_short || set.projects_dir || '' });
     switch (run.status) {
       case 'running': {
         // the current recording, its step, and the session's share (also in the sidebar)
-        var parts = ['Analysing ' + (run.current_name || baseName(run.current_file) || '') + (runHere(st) ? '' : ' in ' + (run.project_name || 'another project'))];
-        if (run.stage_label) parts.push(run.stage_label + (run.stage_index ? ' ' + run.stage_index + '/' + (run.stage_count || 5) : ''));
-        parts.push(Math.floor(run.progress || 0) + '% of the session');
+        var name = run.current_name || baseName(run.current_file) || '', stage = stageText(run);
+        var parts = [runHere(st) ? t('status.analysing', { name: name }) : run.project_name ? t('status.analysing_in', { name: name, project: run.project_name })
+                     : t('status.analysing_elsewhere', { name: name })];
+        if (stage) parts.push(run.stage_index ? t('status.stage', { stage: stage, i: run.stage_index, n: run.stage_count || 5 }) : stage);
+        parts.push(t('status.session_pct', { pct: Math.floor(run.progress || 0) }));
         var eta = etaText(run.eta_s);
         if (eta) parts.push(eta);
         return parts.join(' · ');
       }
-      case 'stopping': return 'Stopping…';
+      case 'stopping': return t('status.stopping');
     }
-    if (readonly(st)) return 'An analysis made before projects (read-only) · ' + (p.dir || '');
+    if (readonly(st)) return t('status.earlier', { dir: p.dir || '' });
     if ((run.status === 'done' || run.status === 'stopped') && p && run.project_id === p.id) {
-      return [run.status === 'done' ? 'Done' : 'Stopped', k + ' of ' + n + ' analysed in this session', f ? f + ' failed' : '', fmtElapsed(run.elapsed_s)].filter(Boolean).join(' · ');
+      return [t(run.status === 'done' ? 'status.done' : 'status.stopped'), t('status.session_count', { k: k, n: n }), f ? t('status.failed_count', { n: f }) : '',
+              fmtElapsed(run.elapsed_s)].filter(Boolean).join(' · ');
     }
-    if (run.status === 'failed' && p && run.project_id === p.id) return 'The session failed · see the log';
+    if (run.status === 'failed' && p && run.project_id === p.id) return t('status.session_failed');
     var c = counts(st), todo = c.new + c.failed;
-    if (!c.all) return 'Ready · add recordings to this project';
+    if (!c.all) return t('status.empty');
     if (todo) {
-      var what = [c.new ? c.new + ' new' : '', c.failed ? c.failed + ' failed' : ''].filter(Boolean).join(' and ');
-      var verb = c.new ? 'analyses' : 'tries';
-      return 'Ready · ' + what + ': Start ' + verb + ' ' + (todo === 1 ? 'it' : 'them') + (c.new ? '' : ' again') + (c.done ? '; the ' + c.done + ' done keep their results' : '');
+      // what Start does: analyse the new ones, try the failed ones again; it or them by todo
+      var key = c.new && c.failed ? 'status.ready_both' : c.new ? 'status.ready_new' : 'status.ready_failed';
+      return t(c.done ? key + '_done' : key, { new: c.new, failed: c.failed, done: c.done, n: todo });
     }
-    return 'All ' + c.done + ' analysed · uf_measures.csv has ' + plural(c.done, 'row') + (p && p.last_session ? ' · last session ' + dayText(p.last_session, true) : '');
+    return t(p && p.last_session ? 'status.all_done_last' : 'status.all_done', { n: c.done, date: dayText(p && p.last_session, true) });
   }
 
   function renderBars(st) {
@@ -373,68 +504,73 @@
     $('startBtn').hidden = here;
     $('stopBtn').hidden = !here;
     setDisabled($('startBtn'), busy || !(c.new + c.failed));
-    $('startBtn').title = busy ? 'One session at a time: ' + (run.project_name || 'another project') + ' is being analysed'
-      : c.new + c.failed ? 'Analyse the ' + plural(c.new + c.failed, 'recording') + ' not done' : 'Every recording is analysed (Analyse again is in the project menu and the details)';
+    $('startBtn').title = busy ? busyText(run) : c.new + c.failed ? t('start.todo', { n: c.new + c.failed }) : t('start.all_done');
     setDisabled($('stopBtn'), run.status === 'stopping');
-    setText($('stopLabel'), run.status === 'stopping' ? 'Stopping…' : 'Stop');
+    setText($('stopLabel'), t(run.status === 'stopping' ? 'toolbar.stopping' : 'toolbar.stop'));
     if (here && focusStart) $('stopBtn').focus();
     if (!here && focusStop) $('startBtn').focus();
     setDisabled($('csvBtn'), !(p && p.csv));
-    $('csvBtn').title = p && p.csv ? 'uf_measures.csv: one row per analysed recording' : 'No recording is analysed yet';
+    $('csvBtn').title = t(p && p.csv ? 'csv.title' : 'csv.none');
     setDisabled($('renameBtn'), here);
     setDisabled($('deleteBtn'), here);
     setDisabled($('againAllBtn'), busy || !R.length);
 
     if (!S.renaming) setText($('projName'), p ? p.name : '');
-    $('projName').title = ro ? 'Analysed on ' + (p ? p.name : '') : here ? 'Rename it when the session has ended' : 'Click to rename';
+    $('projName').title = ro ? t('title.earlier', { name: p ? p.name : '' }) : t(here ? 'title.rename_later' : 'title.click_to_rename');
     setText($('projLang'), TAGS[lang]);
-    $('projLang').title = LANGS[lang] + (lang === 'ja' ? ': measures count morae' : ': measures count syllables');
-    setText($('projCount'), plural(R.length, 'recording'));
+    $('projLang').title = t('lang.title_' + lang);
+    setText($('projCount'), t('count.recordings', { n: R.length }));
 
     var dot = busy ? 'run' : run.status === 'failed' ? 'bad' : run.status === 'done' && p && run.project_id === p.id ? '' : 'idle';
     $('sdot').className = 'dot' + (dot ? ' ' + dot : '');
     setText($('smsg'), S.notice || statusText(st));
-    setText($('ver'), [app.device, app.version ? 'v' + app.version : ''].filter(Boolean).join(' · '));
+    setText($('ver'), [word('device.', app.device_key, app.device), app.version ? 'v' + app.version : ''].filter(Boolean).join(' · '));
   }
+  // why Start (or Analyse again) waits: the session that runs, maybe in another project
+  function busyText(run) { return t('start.busy', { project: run.project_name || t('start.another_project') }); }
 
   // The summary line names the parts of the project, and each part filters the table.
   function renderSummary(st) {
     var c = counts(st), p = projOf(st), run = runOf(st);
     if (S.filter && !c[S.filter]) S.filter = null;
-    var h = '<button type="button" class="fbtn all" data-filter="" data-key="f-all" aria-pressed="' + String(!S.filter) + '">' + plural(c.all, 'recording') + '</button>';
+    var h = '<button type="button" class="fbtn all" data-filter="" data-key="f-all" aria-pressed="' + String(!S.filter) + '">' + esc(t('count.recordings', { n: c.all })) + '</button>';
     FILTERS.forEach(function (k) {
       if (!c[k]) return;
-      h += '<span class="fsep" aria-hidden="true">·</span><button type="button" class="fbtn" data-filter="' + k + '" data-key="f-' + k + '" aria-pressed="' + String(S.filter === k) + '"><i class="sd ' + k + '" aria-hidden="true"></i>' + c[k] + ' ' + k + '</button>';
+      h += '<span class="fsep" aria-hidden="true">·</span><button type="button" class="fbtn" data-filter="' + k + '" data-key="f-' + k + '" aria-pressed="' + String(S.filter === k) + '"><i class="sd ' + k + '" aria-hidden="true"></i>' + esc(t('filter.' + k, { n: c[k] })) + '</button>';
     });
     patch($('filters'), h);
     var stamp = '';
-    if (p && p.kind === 'earlier') stamp = 'Analysed ' + dayText(p.last_session, true) + ' · read-only';
+    if (p && p.kind === 'earlier') stamp = t('stamp.earlier', { date: dayText(p.last_session, true) });
     else if (p) {
-      if (runHere(st)) stamp = 'Session ' + ((p.sessions || 0) + 1) + ' · started ' + (run.started || '');
-      else if (p.sessions) stamp = plural(p.sessions, 'session') + ' · last ' + dayText(p.last_session, true);
-      else stamp = 'No session yet';
+      if (runHere(st)) stamp = t('stamp.running', { n: (p.sessions || 0) + 1, time: run.started || '' });
+      else if (p.sessions) {  // the last session's date where it is known
+        var last = dayText(p.last_session, true);
+        stamp = last ? t('stamp.sessions', { n: p.sessions, date: last }) : t('stamp.sessions_nodate', { n: p.sessions });
+      }
+      else stamp = t('stamp.none');
     }
     setText($('stamp'), stamp);
   }
 
   function renderHead(st) {
     var u = units(langOf(st)), n = runOf(st).stage_count || 5;
-    var h = '<th scope="col" class="no"><div class="h">#</div><div class="u">&nbsp;</div></th><th scope="col" class="rec-h"><div class="h">Recording</div><div class="u">name · length · date</div></th>' +
-            '<th scope="col"><div class="h">Progress</div><div class="u">' + n + ' stages</div></th>' +
-            '<th scope="col"><div class="h">Status · TextGrid</div><div class="u">W words · C clauses</div></th>';
-    for (var i = 0; i < 9; i++) h += '<th scope="col" class="num' + (groupStart(i) ? ' g' : '') + '" title="' + esc(NAMES[i]) + '"><div class="h">' + CODES[i] + '</div><div class="u">' + u[i] + '</div></th>';
-    patch($('headRow'), h + '<th scope="col"><span class="sr-only">Actions</span></th>');
+    var h = '<th scope="col" class="no"><div class="h">#</div><div class="u">&nbsp;</div></th><th scope="col" class="rec-h"><div class="h">' + esc(t('head.recording')) + '</div><div class="u">' + esc(t('head.recording_sub')) + '</div></th>' +
+            '<th scope="col"><div class="h">' + esc(t('head.progress')) + '</div><div class="u">' + esc(t('head.stages', { n: n })) + '</div></th>' +
+            '<th scope="col"><div class="h">' + esc(t('head.status')) + '</div><div class="u">' + esc(t('head.status_sub')) + '</div></th>';
+    for (var i = 0; i < 9; i++) h += '<th scope="col" class="num' + (groupStart(i) ? ' g' : '') + '" title="' + esc(t('measure.' + CODES[i])) + '"><div class="h">' + CODES[i] + '</div><div class="u">' + u[i] + '</div></th>';
+    patch($('headRow'), h + '<th scope="col"><span class="sr-only">' + esc(t('head.actions')) + '</span></th>');
   }
 
   function badge(s) {
-    if (s === 'running') return '<span class="badge running"><span class="pulse" aria-hidden="true"></span>Running</span>';
+    if (s === 'running') return '<span class="badge running"><span class="pulse" aria-hidden="true"></span>' + esc(t('badge.running')) + '</span>';
     var ic = { done: I_DONE, failed: I_FAIL, waiting: I_WAIT, new: I_NEW }[s];
-    return '<span class="badge ' + s + '">' + ic + STATUS[s] + '</span>';
+    return '<span class="badge ' + s + '">' + ic + esc(t('badge.' + s)) + '</span>';
   }
+  // kind: words or clauses
   function tgBadge(letter, kind, state) {
     state = state === 'yes' || state === 'wip' ? state : 'no';
-    var what = { yes: 'saved', wip: 'being written', no: 'not yet' }[state];
-    return '<span class="tg ' + state + '" title="' + kind + ' TextGrid: ' + what + '" aria-label="' + kind + ' TextGrid ' + what + '">' + letter + '</span>';
+    var what = t('tg.' + state);
+    return '<span class="tg ' + state + '" title="' + esc(t('tg.' + kind, { state: what })) + '" aria-label="' + esc(t('tg.' + kind + '_aria', { state: what })) + '">' + letter + '</span>';
   }
   // A row's one action: its folder when done; remove when it is not part of a running session.
   function rowAction(r, run, st) {
@@ -443,8 +579,8 @@
   }
   function actionButton(r, run, st) {
     var a = rowAction(r, run, st), id = esc(r.id);
-    if (a === 'open') return '<button type="button" class="act" data-action="open-folder" data-id="' + id + '" data-key="act" aria-label="Open the folder of ' + esc(r.name) + '" title="Open its session folder">' + FOLDER + '</button>';
-    if (a === 'remove') return '<button type="button" class="act" data-action="remove" data-id="' + id + '" data-key="act" aria-label="Remove ' + esc(r.name) + ' from the project" title="Remove from the project">' + CROSS + '</button>';
+    if (a === 'open') return '<button type="button" class="act" data-action="open-folder" data-id="' + id + '" data-key="act" aria-label="' + esc(t('row.open_aria', { name: r.name })) + '" title="' + esc(t('row.open_title')) + '">' + FOLDER + '</button>';
+    if (a === 'remove') return '<button type="button" class="act" data-action="remove" data-id="' + id + '" data-key="act" aria-label="' + esc(t('row.remove_aria', { name: r.name })) + '" title="' + esc(t('row.remove_title')) + '">' + CROSS + '</button>';
     return '';
   }
   // The progress cell: a thin bar and the percentage; above them, the stage of the running row or
@@ -456,13 +592,12 @@
     if (fill.className !== fc) fill.className = fc;
     if (s === 'new') p = 0;
     if (fill.style.width !== p + '%') fill.style.width = p + '%';
-    var label = s === 'running' ? run.stage_label || 'Analysing' : '';
-    setText(stage, s === 'running' ? label : s === 'failed' ? failedText(r) : '');
-    stage.setAttribute('data-short', SHORT[label] || label);
+    setText(stage, s === 'running' ? stageText(run) || t('stage.unknown') : s === 'failed' ? failedText(r) : '');
+    stage.setAttribute('data-short', s === 'running' ? stageShort(run) : '');
     setText(pct, s === 'failed' ? '' : s === 'new' ? '—' : Math.floor(p) + '%');
     bar.className = 'prog ' + s;
     bar.setAttribute('aria-valuenow', String(Math.floor(p)));
-    bar.setAttribute('aria-label', r.name + ' progress');
+    bar.setAttribute('aria-label', t('row.progress_aria', { name: r.name }));
   }
 
   var rowEls = {};
@@ -502,7 +637,7 @@
     // a filtered table shrinks to its rows and says what it leaves out
     $('addslot').hidden = !R.length || !!S.filter || readonly(st);
     $('filterinfo').hidden = !S.filter;
-    if (S.filter) setText($('filterText'), 'Showing the ' + shown + ' ' + S.filter + ' of ' + plural(R.length, 'recording') + ' · ');
+    if (S.filter) fillSlots($('filterinfo'), t('filter.showing_' + S.filter, { shown: shown, n: R.length }));
   }
   function updateRow(tr, r, i, run, st) {
     var c = tr._c, s = shownStatus(r, run), tg = r.textgrids || {}, vals = measureList(r), cls = s === 'running' ? 'running' : '', when = whenText(r);
@@ -511,7 +646,7 @@
     setText(c.no, pad2(i + 1));
     patch(c.rec, '<div class="rec" title="' + esc(r.name) + '"><b>' + esc(r.name) + '</b><span>' + fmtDur(r.duration_s) + (when ? (r.duration_s != null ? ' · ' : '') + esc(when) : '') + '</span></div>');
     setProg(c.prog, r, s, run);
-    patch(c.st, '<div class="st">' + badge(s) + tgBadge('W', 'Words', tg.words) + tgBadge('C', 'Clauses', tg.clauses) + '</div>');
+    patch(c.st, '<div class="st">' + badge(s) + tgBadge('W', 'words', tg.words) + tgBadge('C', 'clauses', tg.clauses) + '</div>');
     for (var k = 0; k < 9; k++) {
       var v = vals ? vals[k] : null, nc = (v === null ? 'num none' : 'num') + (groupStart(k) ? ' g' : '');
       setText(c.nums[k], v === null ? '—' : v);
@@ -528,13 +663,13 @@
     var s = shownStatus(r, run), id = esc(r.id), u = units(langOf(st)), when = whenText(r);
 
     patch($('insHead'), '<div class="ins-title"><h2 title="' + esc(r.name) + '">' + esc(r.name) + '</h2><div class="ins-meta">' + badge(s) + '<span class="d">' + fmtDur(r.duration_s) + (when ? (r.duration_s != null ? ' · ' : '') + esc(when) : '') + '</span></div></div>' +
-      '<button type="button" class="iconbtn" data-action="close-inspector" data-key="close" aria-label="Close">' + CROSS + '</button>');
+      '<button type="button" class="iconbtn" data-action="close-inspector" data-key="close" aria-label="' + esc(t('details.close')) + '">' + CROSS + '</button>');
 
     var err = $('insErr');
     err.hidden = s !== 'failed';
-    if (s === 'failed') patch(err, '<b>' + esc(failedText(r)) + '</b><span>' + esc(r.error || 'This recording could not be analysed.') + '</span>' +
-      (ro ? '' : '<span class="again">Start tries it again in the next session.</span>') +
-      '<button type="button" class="small" data-action="show-in-log" data-id="' + id + '" data-key="log">Show in log</button>');
+    if (s === 'failed') patch(err, '<b>' + esc(failedText(r)) + '</b><span>' + esc(errorText(r)) + '</span>' +
+      (ro ? '' : '<span class="again">' + esc(t('details.again_next')) + '</span>') +
+      '<button type="button" class="small" data-action="show-in-log" data-id="' + id + '" data-key="log">' + esc(t('details.show_in_log')) + '</button>');
 
     // the nine measures by group, each with its name spelled out: the table only has room for the codes
     var vals = measureList(r), tiles = $('insTiles'), lang = langOf(st);
@@ -542,16 +677,16 @@
     if (vals) patch(tiles, GROUPS.map(function (g) {
       var rows = '';
       for (var j = g.from; j < g.from + 3; j++) {
-        rows += '<div class="mrow"><span class="mk">' + CODES[j] + '</span><span class="mn">' + NAMES[j] + '</span><span class="mv">' + (vals[j] === null ? '<i class="dash">—</i>' : vals[j]) + '</span><span class="mu">' + u[j] + '</span></div>';
+        rows += '<div class="mrow"><span class="mk">' + CODES[j] + '</span><span class="mn">' + esc(t('measure.' + CODES[j])) + '</span><span class="mv">' + (vals[j] === null ? '<i class="dash">—</i>' : vals[j]) + '</span><span class="mu">' + u[j] + '</span></div>';
       }
-      return '<div class="mgroup"><div class="sect">' + g[lang] + '</div>' + rows + '</div>';
+      return '<div class="mgroup"><div class="sect">' + esc(t(g[lang])) + '</div>' + rows + '</div>';
     }).join(''));
 
     var prog = $('insProg'), live = s === 'running';
     prog.hidden = !inRun(r, run);
     if (!prog.hidden) {
-      var p = progPct(r, s), fill = prog.querySelector('.fill'), eta = etaText(run.eta_s);
-      setText(prog.querySelector('.lbl'), live ? (run.stage_label || 'Analysing') + (run.stage_index ? ' · step ' + run.stage_index + ' of ' + (run.stage_count || 5) : '') : 'Waiting for its turn');
+      var p = progPct(r, s), fill = prog.querySelector('.fill'), eta = etaText(run.eta_s), stage = stageText(run) || t('stage.unknown');
+      setText(prog.querySelector('.lbl'), !live ? t('details.waiting') : run.stage_index ? t('details.step', { stage: stage, i: run.stage_index, n: run.stage_count || 5 }) : stage);
       setText(prog.querySelector('.p'), Math.floor(p) + '%');
       if (fill.className !== (live ? 'fill live' : 'fill part')) fill.className = live ? 'fill live' : 'fill part';
       if (fill.style.width !== p + '%') fill.style.width = p + '%';
@@ -560,11 +695,12 @@
 
     var files = r.files || [], fe = $('insFiles');
     fe.hidden = !files.length;
-    if (files.length) patch(fe, '<div class="sect">Files</div><div class="files">' + files.map(function (f, j) {
+    if (files.length) patch(fe, '<div class="sect">' + esc(t('details.files')) + '</div><div class="files">' + files.map(function (f, j) {
       var mark = f.kind === 'dir' ? '<span class="dirm">' + I_DIR + '</span>' : f.exists ? '<span class="y">' + I_FILE + '</span>' : '<span class="n">' + I_NOFILE + '</span>';
+      var label = f.label_kind === 'session' ? t('file.session', { name: f.name }) : word('file.', f.label_kind, f.label);
       return f.exists
-        ? '<div>' + mark + '<button type="button" class="link" data-action="reveal" data-path="' + esc(f.path) + '" data-key="file' + j + '" title="' + esc(f.path) + '">' + esc(f.label) + '</button></div>'
-        : '<div>' + mark + '<span class="missing">' + esc(f.label) + '<span class="sr-only"> (not written yet)</span></span></div>';
+        ? '<div>' + mark + '<button type="button" class="link" data-action="reveal" data-path="' + esc(f.path) + '" data-key="file' + j + '" title="' + esc(f.path) + '">' + esc(label) + '</button></div>'
+        : '<div>' + mark + '<span class="missing">' + esc(label) + '<span class="sr-only"> ' + esc(t('details.not_written')) + '</span></span></div>';
     }).join('') + '</div>');
 
     // its actions: open, analyse again, remove; none while it is in the running session
@@ -573,19 +709,19 @@
       var open = r.status === 'done' || ro && r.files && r.files.length;
       var again = !ro && r.status !== 'new';
       if (open || again) html += '<div class="ins-actions">' +
-        (open ? '<button type="button" class="ins-foot" data-action="open-folder" data-id="' + id + '" data-key="foot-open">Open folder</button>' : '') +
-        (again ? '<button type="button" class="ins-foot" data-action="again" data-id="' + id + '" data-key="foot-again"' + (busy ? ' aria-disabled="true" title="One session at a time: ' + esc(run.project_name || 'another project') + ' is being analysed"' : '') + '>Analyse again</button>' : '') + '</div>';
-      if (!ro) html += '<button type="button" class="ins-remove" data-action="remove" data-id="' + id + '" data-key="foot-remove">Remove from the project</button>';
+        (open ? '<button type="button" class="ins-foot" data-action="open-folder" data-id="' + id + '" data-key="foot-open">' + esc(t('details.open_folder')) + '</button>' : '') +
+        (again ? '<button type="button" class="ins-foot" data-action="again" data-id="' + id + '" data-key="foot-again"' + (busy ? ' aria-disabled="true" title="' + esc(busyText(run)) + '"' : '') + '>' + esc(t('details.again')) + '</button>' : '') + '</div>';
+      if (!ro) html += '<button type="button" class="ins-remove" data-action="remove" data-id="' + id + '" data-key="foot-remove">' + esc(t('details.remove')) + '</button>';
     }
     foot.hidden = !html;
     if (html) patch(foot, html);
   }
 
   function logPathText(p, set) {
-    if (!p) return 'Written automatically for every session, as log.txt in its folder';
+    if (!p) return t('log.path_none');
     var root = set.projects_dir;
     if (root && p.indexOf(root) === 0) p = baseName(root) + p.slice(root.length);
-    return 'Written automatically for every session: ' + p.split(/[\\/]+/).filter(Boolean).join(' › ');
+    return t('log.path', { path: p.split(/[\\/]+/).filter(Boolean).join(' › ') });
   }
   function lineKey(l) { return (l && l.t) + '\u0000' + (l && l.text); }
   function lineEl(l) {
@@ -625,7 +761,7 @@
     $('dropzone').classList.toggle('dropping', S.drag && !readonly(S.state));
     $('dropmask').hidden = !(S.drag && !empty && !readonly(S.state));
     var p = projOf(S.state);
-    setText($('dropText'), 'Drop to add recordings' + (p ? ' to ' + p.name : ''));
+    setText($('dropText'), p ? t('drop.add_to', { project: p.name }) : t('drop.add'));
   }
 
   /* ---------- the New project dialog ---------- */
@@ -656,8 +792,8 @@
     if (!S.dialog) return;
     var set = st.settings || {}, name = $('dlgName').value.trim();
     document.querySelectorAll('.segmented [data-lang]').forEach(function (b) { b.setAttribute('aria-checked', String(b.getAttribute('data-lang') === S.newLang)); });
-    setText($('dlgLangHint'), (S.newLang === 'ja' ? 'Measures count morae (日本語).' : 'Measures count syllables.') + ' The language is fixed once the project is created.');
-    setText($('dlgPath'), (set.projects_dir_short || set.projects_dir || '') + ((st.app || {}).sep || '/') + (name || 'Untitled project'));
+    setText($('dlgLangHint'), t(S.newLang === 'ja' ? 'dialog.hint_ja' : 'dialog.hint_en'));
+    setText($('dlgPath'), (set.projects_dir_short || set.projects_dir || '') + ((st.app || {}).sep || '/') + (name || t('dialog.untitled')));
     setDisabled($('dlgCreate'), !name);
   }
   function createProject() {
@@ -666,10 +802,33 @@
     call('create_project', name, S.newLang).then(function (res) {
       if (res && res.ok) { S.dialog = false; S.sel = null; S.filter = null; if (S.state) render(); return; }
       var e = $('dlgError');
-      e.textContent = (res && res.error) || 'The project could not be created.';
+      e.textContent = failText(res, t('dialog.create_failed'));
       e.hidden = false;
       $('dlgName').focus();
     });
+  }
+
+  /* ---------- About ---------- */
+
+  // The citation (about.citation, the same in every language): its journal is between asterisks.
+  function citationText() { return t('about.citation').replace(/\*/g, ''); }
+  function openAbout() {
+    S.about = true;
+    closeMenus(false);
+    renderAbout(S.state);
+    setTimeout(function () { $('aboutClose').focus(); }, 0);
+  }
+  function closeAbout() {
+    S.about = false;
+    renderAbout(S.state);
+    $('settingsBtn').focus();
+  }
+  function renderAbout(st) {
+    $('aboutScrim').hidden = !S.about;
+    if (!S.about) return;
+    var app = (st && st.app) || {};
+    setText($('aboutVersion'), t('about.version', { version: app.version_full || app.version || '' }));
+    patch($('aboutCitation'), t('about.citation').split('*').map(function (part, i) { return i % 2 ? '<i>' + esc(part) + '</i>' : esc(part); }).join(''));
   }
 
   /* ---------- confirmations, rename ---------- */
@@ -685,35 +844,33 @@
     if (S.state) renderDialog(S.state);
   }
   // The Trash (macOS) or the Recycle Bin (Windows), as the backend names it.
-  function trashName(st) { return (st && st.app && st.app.trash) || 'Trash'; }
+  function trashName(st) { var app = (st && st.app) || {}; return word('bin.', app.trash_key, app.trash) || t('bin.trash'); }
   function confirmDelete() {
     var p = projOf(S.state);
     if (!p || p.kind !== 'project' || !enabled($('deleteBtn'))) return;
     var bin = trashName(S.state);
-    ask({ title: 'Delete “' + p.name + '”?', danger: true, ok: 'Move to the ' + bin,
-          text: 'Its folder, with the copies of its ' + plural(recsOf(S.state).length, 'recording') + ', every session and its uf_measures.csv, moves to the ' + bin + '. You can put it back from there.',
+    ask({ title: t('confirm.delete_title', { name: p.name }), danger: true, ok: t('confirm.delete_ok', { bin: bin }),
+          text: t('confirm.delete_text', { n: recsOf(S.state).length, bin: bin }),
           action: function () {
             return call('delete_project', p.id).then(function (res) {
-              if (res && !res.ok) note(res.error || 'The project could not be moved to the ' + bin + '.');
+              if (res && !res.ok) note(failText(res, t('confirm.delete_failed', { bin: bin })));
             });
           } });
   }
   function confirmAgainAll() {
     var p = projOf(S.state), n = recsOf(S.state).length;
     if (!p || p.kind !== 'project' || !enabled($('againAllBtn'))) return;
-    ask({ title: 'Analyse all ' + plural(n, 'recording') + ' again?', danger: false, ok: 'Analyse again',
-          text: 'Each result is replaced when the new one is ready. The earlier sessions’ files stay where they are.',
-          action: function () { return call('analyse_again', null); } });
+    ask({ title: t('confirm.again_title', { n: n }), danger: false, ok: t('confirm.again_ok'), text: t('confirm.again_text'),
+          action: function () { return call('analyse_again', null).then(started); } });
   }
   function confirmRemove(r) {
     var p = projOf(S.state);
     if (!p || p.kind !== 'project') return;
-    ask({ title: 'Remove “' + r.name + '” from the project?', danger: true, ok: 'Remove',
-          text: 'Its row leaves the table' + (r.status === 'done' ? ' and the project’s uf_measures.csv' : '') +
-                ', and the project’s copy of the file moves to the ' + trashName(S.state) + '. Your original file and the earlier sessions’ folders stay as they are.',
+    ask({ title: t('confirm.remove_title', { name: r.name }), danger: true, ok: t('confirm.remove_ok'),
+          text: t(r.status === 'done' ? 'confirm.remove_text_done' : 'confirm.remove_text', { bin: trashName(S.state) }),
           action: function () {
             return call('remove', r.id).then(function (ok) {
-              if (ok === false) note(r.name + ' could not be removed: it is being analysed.');
+              if (ok === false) note(t('notice.remove_busy', { name: r.name }));
             });
           } });
   }
@@ -738,7 +895,7 @@
     if (!save || !p || !name || name === p.name) { if (S.state) renderBars(S.state); return; }
     setText($('projName'), name);
     call('rename_project', p.id, name).then(function (res) {
-      if (res && !res.ok) note(res.error || 'The project could not be renamed.');
+      if (res && !res.ok) note(failText(res, t('notice.rename_failed')));
     });
   }
 
@@ -781,10 +938,40 @@
     if (el && el.getAttribute('aria-disabled') === 'true') return;
     if (a === 'open-folder' && r) call('open_folder', r.id);
     else if (a === 'remove' && r) confirmRemove(r);
-    else if (a === 'again' && r) call('analyse_again', [r.id]);
+    else if (a === 'again' && r) call('analyse_again', [r.id]).then(started);
     else if (a === 'reveal') call('reveal', el.getAttribute('data-path'));
     else if (a === 'show-in-log' && r) showInLog(r);
     else if (a === 'close-inspector') closeInspector();
+  }
+  // A language chosen in Settings: the window switches at once, the backend remembers it.
+  function chooseLanguage(code) {
+    closeMenus(true);
+    if (uiCode(code) === UI) return;
+    S.uiWant = uiCode(code);
+    if (S.state) render();
+    call('set_ui_language', S.uiWant).then(function (res) {
+      if (res && res.ok) return;
+      S.uiWant = null;  // not saved: back to the backend's
+      if (S.state) render();
+    });
+  }
+  // The theme button: the other theme than the one shown, as a choice of its own (not System).
+  function shownTheme() { return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'; }
+  function themeLabel() {
+    var b = $('themeBtn'), text = t(shownTheme() === 'light' ? 'theme.to_dark' : 'theme.to_light');
+    if (b.title !== text) { b.title = text; b.setAttribute('aria-label', text); }
+  }
+  // An appearance chosen in Settings (system, light, dark) or with the theme button: the window
+  // switches at once, the backend remembers it and gives the native title bar the same.
+  function chooseAppearance(code) {
+    closeMenus(true);
+    S.themeWant = code;
+    if (S.state) render();
+    call('set_appearance', code).then(function (res) {
+      if (res && res.ok) return;
+      S.themeWant = null;  // not saved: back to the backend's
+      if (S.state) render();
+    });
   }
   function selectProject(id) {
     var p = projOf(S.state);
@@ -793,22 +980,22 @@
     call('select_project', id);
   }
 
-  // Copy the log: ClipboardItem takes the backend's promise inside the click (WebKit needs
-  // the write to start there), then writeText, then a hidden textarea.
-  function copyLog() {
-    var text = call('copy_log').then(function (t) { return t == null ? '' : String(t); });
-    var ok = function () { note('Log copied'); };
-    var fail = function () { note('The log could not be copied. Use Save log as… instead.'); };
+  // Copy a text (a promise of it) to the clipboard and say so (ok, fail: the notices): ClipboardItem
+  // takes the promise inside the click (WebKit needs the write to start there), then writeText,
+  // then a hidden textarea.
+  function copyText(text, okNote, failNote) {
+    var ok = function () { note(okNote); };
+    var fail = function () { note(failNote); };
     var fallback = function () {
-      return text.then(function (t) {
-        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function () { return true; }, function () { return execCopy(t); });
-        return execCopy(t);
+      return text.then(function (s) {
+        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(s).then(function () { return true; }, function () { return execCopy(s); });
+        return execCopy(s);
       });
     };
     var first;
     try {
       if (!(navigator.clipboard && navigator.clipboard.write && window.ClipboardItem)) throw new Error('no ClipboardItem');
-      first = navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then(function (t) { return new Blob([t], { type: 'text/plain' }); }) })]).then(function () { return true; }, fallback);
+      first = navigator.clipboard.write([new ClipboardItem({ 'text/plain': text.then(function (s) { return new Blob([s], { type: 'text/plain' }); }) })]).then(function () { return true; }, fallback);
     } catch (e) {
       first = fallback();
     }
@@ -824,6 +1011,12 @@
     var watchdog = setTimeout(function () { report(false); }, 3000);
     first.then(report, function () { report(false); });
   }
+  // the log, as the backend has it
+  function copyLog() {
+    copyText(call('copy_log').then(function (s) { return s == null ? '' : String(s); }), t('notice.log_copied'), t('notice.log_not_copied'));
+  }
+  // the citation as plain text, the APA reference without its italics
+  function copyCitation() { copyText(Promise.resolve(citationText()), t('notice.citation_copied'), t('notice.citation_not_copied')); }
   function execCopy(t) {
     var ta = document.createElement('textarea'), ok = false;
     ta.value = t;
@@ -889,6 +1082,24 @@
     setupMenu('settingsBtn', 'settingsMenu');
     setupMenu('projMenuBtn', 'projMenu');
     $('changeFolderBtn').addEventListener('click', function () { if (enabled(this)) { closeMenus(true); call('choose_projects_dir'); } });
+    Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-ui]'), function (b) {
+      b.addEventListener('click', function () { chooseLanguage(b.getAttribute('data-ui')); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-theme-choice]'), function (b) {
+      b.addEventListener('click', function () { chooseAppearance(b.getAttribute('data-theme-choice')); });
+    });
+    $('themeBtn').addEventListener('click', function () { chooseAppearance(shownTheme() === 'light' ? 'dark' : 'light'); themeLabel(); });
+
+    // About: its links open outside the window (Api.open_url); Close, Escape (below) or the scrim close it
+    $('aboutBtn').addEventListener('click', openAbout);
+    $('aboutClose').addEventListener('click', closeAbout);
+    $('copyCitationBtn').addEventListener('click', copyCitation);
+    $('aboutScrim').addEventListener('mousedown', function (e) { if (e.target === this) closeAbout(); });
+    Array.prototype.forEach.call(document.querySelectorAll('#about a[href]'), function (a) {
+      var open = function (e) { e.preventDefault(); if (e.type === 'click' || e.button === 1) call('open_url', a.getAttribute('href')); };
+      a.addEventListener('click', open);
+      a.addEventListener('auxclick', open);
+    });
     $('sideToggle').addEventListener('click', function () { S.side = !sideOpen(); applySide(); });
     window.addEventListener('resize', function () { applySide(); });
     $('newBtn').addEventListener('click', function () { openDialog('', 'en'); });
@@ -907,7 +1118,7 @@
     $('addBtn').addEventListener('click', function () { call('add_files'); });
     $('chooseBtn').addEventListener('click', function () { call('add_files'); });
     $('addMoreBtn').addEventListener('click', function () { call('add_files'); });
-    $('startBtn').addEventListener('click', function () { if (enabled(this)) call('start'); });
+    $('startBtn').addEventListener('click', function () { if (enabled(this)) call('start').then(started); });
     $('stopBtn').addEventListener('click', function () { if (enabled(this)) call('stop'); });
     $('logToggle').addEventListener('click', function () { setLog(!S.log); });
     $('drawerClose').addEventListener('click', function () { setLog(false); $('logToggle').focus(); });
@@ -963,7 +1174,8 @@
     });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') return;
-      if (S.confirm) { e.preventDefault(); closeConfirm(); }
+      if (S.about) { e.preventDefault(); closeAbout(); }
+      else if (S.confirm) { e.preventDefault(); closeConfirm(); }
       else if (S.dialog) { e.preventDefault(); closeDialog(); }
       else if (anyMenuOpen()) { e.preventDefault(); closeMenus(true); }
       else if (S.sel !== null) closeInspector();
@@ -996,14 +1208,25 @@
   /* ---------- mock backend: the app's API with example projects ---------- */
 
   function createMock(view, preview) {
+    // as the backend sends them: the stages' keys and English names (STEPS), the errors' codes beside
+    // their English; the log stays in English
     var STAGES = ['Speech recognition', 'Word alignment', 'Clauses', 'Pauses', 'Measures'];
+    var STAGE_KEYS = ['asr_stage1', 'mfa_stage2', 'clause', 'islands', 'caf'];
     var STAGE_S = [5, 4, 2.5, 1.5, 1];  // simulated seconds per recording and stage (about 14 s each in a batch)
     var DIR = '~/Documents/Clausa projects', OLD = '~/Documents/Clausa results';
+    var LANGS = { en: 'English', ja: 'Japanese' };
     var now = new Date(), TODAY = now.getFullYear() + '-' + pad2(now.getMonth() + 1) + '-' + pad2(now.getDate());
     var ERRORS = {
-      1: { text: 'No speech was found in this recording, so it was skipped. Check that the file holds the learner’s speech.', log: 'no speech found in the recording; skipped' },
-      2: { text: 'Word alignment failed for this recording: MFA aligned none of its words. Its measures are not shown; the log has the details.', log: 'word alignment failed: MFA aligned none of its 214 words' }
+      1: { code: 'no_speech', text: 'No speech was found in this recording, so it was skipped. Check that the file holds the learner\'s speech.', log: 'no speech found in the recording; skipped' },
+      2: { code: 'alignment_failed', params: { detail: 'MFA aligned none of its words' },
+           text: 'Word alignment failed for this recording: MFA aligned none of its words. Its measures are not shown; the log has the details.', log: 'word alignment failed: MFA aligned none of its 214 words' }
     };
+    function m(key, text, params) { return { key: key, params: params || {}, text: text }; }  // a message (runner/app.py, msg)
+    function recordings(n) { return n + ' recording' + (n === 1 ? '' : 's'); }
+    function seconds(s) {  // runner/app.py, fmt_seconds
+      s = Math.round(s);
+      return s < 60 ? s + ' s' : s < 3600 ? Math.floor(s / 60) + ' min' + (s % 60 ? ' ' + (s % 60) + ' s' : '') : Math.floor(s / 3600) + ' h ' + (Math.floor(s / 60) % 60) + ' min';
+    }
 
     // Measures that agree with each other: PR = MCPR + ECPR as shown; 1/SR = 1/AR + pause time per
     // syllable; MPD = that pause time / PR; MLR = syllables / (pauses + 1). The inputs come from a
@@ -1052,22 +1275,25 @@
 
     var X = {}, clock = 14 * 3600 + 5 * 60 + 2, sim = null, stopTimer = null, noticeN = 0;
     var D = {
-      app: { version: '1.0.1', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX' },
+      app: { version: '1.0.2', version_full: '1.0.2', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX', device_key: preview ? 'preview' : 'mlx',
+             trash: 'Trash', trash_key: 'trash', ui_language: UI, ui_language_setting: params.get('ui') ? UI : null,
+             appearance: ['light', 'dark'].indexOf(params.get('theme')) >= 0 ? params.get('theme') : 'system' },
       settings: { projects_dir: DIR, projects_dir_short: DIR },
       projects: [], earlier: [], current: null, run: idleRun(), notice: { id: 0, text: '' }
     };
-    function idleRun() { return { status: 'idle', project_id: null, project_name: '', session_dir: null, csv_path: null, started: '', elapsed_s: 0, eta_s: null, progress: 0, stage_index: 0, stage_count: STAGES.length, stage_label: '', current_file: null, current_name: '', done_count: 0, failed_count: 0, total: 0 }; }
+    function idleRun() { return { status: 'idle', project_id: null, project_name: '', session_dir: null, csv_path: null, started: '', elapsed_s: 0, eta_s: null, progress: 0, stage_index: 0, stage_count: STAGES.length, stage_label: '', stage: '', current_file: null, current_name: '', done_count: 0, failed_count: 0, total: 0 }; }
     function hms(s) { s = Math.floor(s); return pad2(Math.floor(s / 3600) % 24) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60); }
     function proj(id) { for (var j = 0; j < D.projects.length; j++) if (D.projects[j].id === id) return D.projects[j]; return null; }
     function cur() { return proj(D.current); }
     function rec(id) { var p = sim ? sim.p : cur(); if (!p) return null; for (var k = 0; k < p.recordings.length; k++) if (p.recordings[k].id === id) return p.recordings[k]; return null; }
     function busy() { return D.run.status === 'running' || D.run.status === 'stopping'; }
     function plog(p, text, level, t) { p.log.lines.push({ t: t || hms(clock), text: text, level: level || 'info' }); }
-    function notice(text) { D.notice = { id: ++noticeN, text: text }; }
+    function notice(msg) { D.notice = { id: ++noticeN, key: msg.key, params: msg.params, text: msg.text }; }
+    function refuse(msg) { return Promise.resolve({ ok: false, error: msg.text, key: msg.key, params: msg.params }); }
 
     function addRec(p, name, opts) {
       var smp = sample(p.id + '/' + name, p.language), id = name.replace(/\.[^.]+$/, '');
-      var r = { id: id, name: name, duration_s: smp.dur, status: 'new', progress: 0, textgrids: { words: 'no', clauses: 'no' }, measures: null, files: [], error: null, failed_stage: null, added: (opts && opts.added) || new Date().toISOString(), analysed: null };
+      var r = { id: id, name: name, duration_s: smp.dur, status: 'new', progress: 0, textgrids: { words: 'no', clauses: 'no' }, measures: null, files: [], error: null, error_code: null, error_params: null, failed_stage: null, added: (opts && opts.added) || new Date().toISOString(), analysed: null };
       X[p.id + '/' + id] = { measures: smp.m, fail: opts && opts.fail ? Number(opts.fail) : 0, session: null };
       p.recordings.push(r);
       return r;
@@ -1075,11 +1301,12 @@
     function x(p, r) { return X[p.id + '/' + r.id]; }
     function finishRec(p, r, session) {
       r.status = 'done'; r.progress = 100; r.textgrids = { words: 'yes', clauses: 'yes' }; r.measures = x(p, r).measures;
-      r.error = null; r.failed_stage = null; x(p, r).session = session; r.analysed = iso(session);
+      r.error = r.error_code = r.error_params = null; r.failed_stage = null; x(p, r).session = session; r.analysed = iso(session);
     }
     function failRec(p, r, stage, session) {
       var e = ERRORS[stage] || ERRORS[2];
-      r.status = 'failed'; r.error = e.text; r.failed_stage = STAGES[stage - 1]; r.progress = (stage - 1) * 20 + 12; r.measures = null;
+      r.status = 'failed'; r.error = e.text; r.error_code = e.code; r.error_params = e.params || {}; r.failed_stage = STAGES[stage - 1];
+      r.progress = (stage - 1) * 20 + 12; r.measures = null;
       r.textgrids = { words: stage > 2 ? 'yes' : 'no', clauses: 'no' }; x(p, r).session = session; r.analysed = iso(session);
     }
     function build(spec) {
@@ -1096,7 +1323,7 @@
       var inLast = p.recordings.filter(function (r) { return x(p, r).session === last; });
       if (inLast.length) {
         p.log.path = DIR + '/' + p.name + '/sessions/' + last + '/log.txt';
-        plog(p, 'Session started: ' + plural(inLast.length, 'recording') + ' of ' + p.name + ', ' + LANGS[p.language], 'info', hms(t0));
+        plog(p, 'Session started: ' + recordings(inLast.length) + ' of ' + p.name + ', ' + LANGS[p.language], 'info', hms(t0));
         inLast.forEach(function (r, j) {
           var t = hms(t0 + 70 + j * 14);
           if (r.status === 'failed') plog(p, r.name + ': ' + (ERRORS[STAGES.indexOf(r.failed_stage) + 1] || ERRORS[2]).log, 'error', t);
@@ -1124,6 +1351,7 @@
       for (var s = sim.stage + 1; s <= STAGES.length; s++) left += STAGE_S[s - 1] * sim.order.length;
       D.run.stage_index = sim.stage;
       D.run.stage_label = STAGES[sim.stage - 1];
+      D.run.stage = STAGE_KEYS[sim.stage - 1];
       D.run.current_file = r ? r.id : null;
       D.run.current_name = r ? r.name : '';
       D.run.eta_s = Math.max(0, Math.round(left));
@@ -1142,13 +1370,14 @@
       D.run.total = recs.length;
       p.log = { path: D.run.session_dir + '/log.txt', lines: [] };
       recs.forEach(function (r) {
-        r.before = { status: r.status, measures: r.measures, analysed: r.analysed, error: r.error, failed_stage: r.failed_stage, textgrids: r.textgrids };
-        r.status = 'running'; r.progress = 0; r.measures = null; r.error = null; r.failed_stage = null;
+        r.before = { status: r.status, measures: r.measures, analysed: r.analysed, error: r.error, error_code: r.error_code, error_params: r.error_params,
+                     failed_stage: r.failed_stage, textgrids: r.textgrids };
+        r.status = 'running'; r.progress = 0; r.measures = null; r.error = r.error_code = r.error_params = null; r.failed_stage = null;
         r.textgrids = { words: 'no', clauses: 'no' };
       });
       var ids = recs.map(function (r) { return r.id; }).sort();
       sim = { p: p, stamp: stamp, all: ids.slice(), order: ids.slice(), stage: 1, j: 0, t: 0 };
-      plog(p, 'Session started: ' + plural(ids.length, 'recording') + ' of ' + p.name + ', ' + LANGS[p.language]);
+      plog(p, 'Session started: ' + recordings(ids.length) + ' of ' + p.name + ', ' + LANGS[p.language]);
       sync();
       return true;
     }
@@ -1156,9 +1385,9 @@
       sim.order.forEach(function (id) { var r = rec(id); finishRec(sim.p, r, sim.stamp); r.before = null; });
       sim.all.forEach(function (id) { var r = rec(id); if (r) r.before = null; });
       counts();
-      D.run.status = 'done'; D.run.eta_s = 0; D.run.current_file = null; D.run.current_name = ''; D.run.stage_label = ''; D.run.stage_index = 0; D.run.progress = 100;
+      D.run.status = 'done'; D.run.eta_s = 0; D.run.current_file = null; D.run.current_name = ''; D.run.stage_label = D.run.stage = ''; D.run.stage_index = 0; D.run.progress = 100;
       sim.p.sessions.push(sim.stamp);
-      plog(sim.p, 'Session finished: ' + D.run.done_count + ' of ' + D.run.total + ' analysed' + (D.run.failed_count ? ', ' + D.run.failed_count + ' failed' : '') + ' in ' + fmtElapsed(D.run.elapsed_s), 'ok');
+      plog(sim.p, 'Session finished: ' + D.run.done_count + ' of ' + D.run.total + ' analysed' + (D.run.failed_count ? ', ' + D.run.failed_count + ' failed' : '') + ' in ' + seconds(D.run.elapsed_s), 'ok');
       sim = null;
     }
     function step(dt) {
@@ -1204,14 +1433,15 @@
           var r = rec(id);
           if (r && r.status === 'running') {
             var b = r.before || {};
-            r.status = b.status || 'new'; r.measures = b.measures || null; r.analysed = b.analysed || null; r.error = b.error || null; r.failed_stage = b.failed_stage || null;
+            r.status = b.status || 'new'; r.measures = b.measures || null; r.analysed = b.analysed || null; r.error = b.error || null;
+            r.error_code = b.error_code || null; r.error_params = b.error_params || null; r.failed_stage = b.failed_stage || null;
             r.textgrids = b.textgrids || { words: 'no', clauses: 'no' }; r.progress = r.status === 'done' ? 100 : 0; back++;
           }
           if (r) r.before = null;
         });
         counts();
-        D.run.status = 'stopped'; D.run.current_file = null; D.run.current_name = ''; D.run.eta_s = null; D.run.stage_label = ''; D.run.stage_index = 0;
-        plog(sim.p, 'Stopped by the user; ' + plural(back, 'recording') + ' back to how they were');
+        D.run.status = 'stopped'; D.run.current_file = null; D.run.current_name = ''; D.run.eta_s = null; D.run.stage_label = D.run.stage = ''; D.run.stage_index = 0;
+        plog(sim.p, 'Stopped by the user; ' + recordings(back) + ' back to how they were');
         sim = null;
       }, 700);
       return true;
@@ -1238,10 +1468,11 @@
         out.recordings = p.recordings.map(function (r) {
           var stem = r.id, sess = x(p, r).session || (sim && sim.p === p && sim.all.indexOf(r.id) >= 0 ? sim.stamp : null), dir = DIR + '/' + p.name + '/sessions/' + (sess || '') + '/';
           r.files = r.status === 'new' ? [] : [
-            { label: 'Words TextGrid', path: dir + 'asr/textgrids_clean/' + stem + '.TextGrid', exists: r.textgrids.words === 'yes', kind: 'file' },
-            { label: 'Clauses TextGrid', path: dir + 'clauses/' + stem + '.TextGrid', exists: r.textgrids.clauses === 'yes', kind: 'file' }
+            { label: 'Words TextGrid', label_kind: 'words', path: dir + 'asr/textgrids_clean/' + stem + '.TextGrid', exists: r.textgrids.words === 'yes', kind: 'file' },
+            { label: 'Clauses TextGrid', label_kind: 'clauses', path: dir + 'clauses/' + stem + '.TextGrid', exists: r.textgrids.clauses === 'yes', kind: 'file' }
           ];
-          if (sess && r.status !== 'running') r.files.push({ label: 'Session ' + sess, path: dir, exists: true, kind: 'dir' });
+          if (sess && r.status !== 'running') r.files.push({ label: 'Session ' + sess, label_kind: 'session', name: sess, path: dir, exists: true, kind: 'dir' });
+          r.failed_stage_key = STAGE_KEYS[STAGES.indexOf(r.failed_stage)] || null;
           return r;
         });
         out.log = p.log;
@@ -1260,6 +1491,7 @@
         var smp = sample(q.id + f, e.language), ok = j !== 1 || e.files.length < 3;
         q.recordings.push({ id: f, name: f + '.wav', duration_s: smp.dur, status: ok ? 'done' : 'failed', progress: ok ? 100 : 0, textgrids: { words: ok ? 'yes' : 'no', clauses: ok ? 'yes' : 'no' },
                             measures: ok ? smp.m : null, files: [], error: ok ? null : 'This analysis has no measures for this recording. Its log.txt has the details.',
+                            error_code: ok ? null : 'earlier_no_measures', error_params: ok ? null : {}, failed_stage_key: null,
                             failed_stage: null, added: '', analysed: iso(e.stamp) });
       });
       D.earlier.push(q);
@@ -1284,26 +1516,30 @@
       },
       create_project: function (name, language) {
         name = String(name || '').trim();
-        if (!name || /[\/:]/.test(name)) return Promise.resolve({ ok: false, error: 'A project name cannot contain / or : (it becomes the name of its folder).' });
-        if (D.projects.some(function (q) { return q.name.toLowerCase() === name.toLowerCase(); })) return Promise.resolve({ ok: false, error: 'There is already a project or folder called ' + name + ' in ' + DIR + '.' });
+        if (!name || /[\/:]/.test(name)) return refuse(m('project.name_chars', 'A project name cannot contain / or : (it becomes the name of its folder).'));
+        if (D.projects.some(function (q) { return q.name.toLowerCase() === name.toLowerCase(); })) {
+          return refuse(m('project.exists_in', 'There is already a project or folder called ' + name + ' in ' + DIR + '.', { name: name, root: DIR }));
+        }
         D.projects.unshift({ id: name, name: name, language: language === 'ja' ? 'ja' : 'en', sessions: [], recordings: [], log: { path: null, lines: [] } });
         D.current = name;
         return Promise.resolve({ ok: true, id: name });
       },
       rename_project: function (id, name) {
         var p = proj(id); name = String(name || '').trim();
-        if (!p) return Promise.resolve({ ok: false, error: 'That project is not in the list any more.' });
-        if (busy() && D.run.project_id === id) return Promise.resolve({ ok: false, error: 'The project is being analysed: rename it when the session has ended.' });
-        if (!name || /[\/:]/.test(name)) return Promise.resolve({ ok: false, error: 'A project name cannot contain / or : (it becomes the name of its folder).' });
-        if (D.projects.some(function (q) { return q !== p && q.name.toLowerCase() === name.toLowerCase(); })) return Promise.resolve({ ok: false, error: 'There is already a project or folder called ' + name + '.' });
+        if (!p) return refuse(m('project.gone', 'That project is not in the list any more.'));
+        if (busy() && D.run.project_id === id) return refuse(m('project.rename_busy', 'The project is being analysed: rename it when the session has ended.'));
+        if (!name || /[\/:]/.test(name)) return refuse(m('project.name_chars', 'A project name cannot contain / or : (it becomes the name of its folder).'));
+        if (D.projects.some(function (q) { return q !== p && q.name.toLowerCase() === name.toLowerCase(); })) {
+          return refuse(m('project.exists', 'There is already a project or folder called ' + name + '.', { name: name }));
+        }
         Object.keys(X).forEach(function (k) { if (k.indexOf(p.id + '/') === 0) { X[name + k.slice(p.id.length)] = X[k]; } });
         p.id = p.name = name; D.current = name;
         return Promise.resolve({ ok: true, id: name });
       },
       delete_project: function (id) {
         var p = proj(id);
-        if (!p) return Promise.resolve({ ok: false, error: 'That project is not in the list any more.' });
-        if (busy() && D.run.project_id === id) return Promise.resolve({ ok: false, error: 'The project is being analysed: stop the session first.' });
+        if (!p) return refuse(m('project.gone', 'That project is not in the list any more.'));
+        if (busy() && D.run.project_id === id) return refuse(m('project.delete_busy', 'The project is being analysed: stop the session first.'));
         D.projects.splice(D.projects.indexOf(p), 1);
         if (D.current === id) D.current = D.projects.length ? D.projects[0].id : null;
         return Promise.resolve({ ok: true });
@@ -1319,14 +1555,18 @@
       },
       add_paths: function (paths) {
         var p = cur(), added = 0, refused = [];
-        if (!p) { notice('Create or choose a project first, then add recordings to it.'); return Promise.resolve({ added: 0, refused: ['no project'] }); }
+        if (!p) {
+          refused.push(m('refused.no_project', 'Create or choose a project first, then add recordings to it.'));
+          notice(refused[0]);
+          return Promise.resolve({ added: 0, refused: [refused[0].text] });
+        }
         (paths || []).forEach(function (q) {
           var name = baseName(q), id = name.replace(/\.[^.]+$/, '');
-          if (p.recordings.some(function (r) { return r.id.toLowerCase() === id.toLowerCase(); })) refused.push(name + ': this project already has a recording named ' + id + '; rename the file to add it');
+          if (p.recordings.some(function (r) { return r.id.toLowerCase() === id.toLowerCase(); })) refused.push(m('refused.taken', name + ': this project already has a recording named ' + id + '; rename the file to add it', { file: name, id: id }));
           else { addRec(p, name); added++; }
         });
         if (refused.length) notice(refused[0]);
-        return Promise.resolve({ added: added, refused: refused });
+        return Promise.resolve({ added: added, refused: refused.map(function (r) { return r.text; }) });
       },
       remove: function (id) {
         var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0];
@@ -1338,6 +1578,17 @@
       analyse_again: function (ids) { var p = cur(); return Promise.resolve(!!p && startSession(p, p.recordings.filter(function (r) { return !ids || ids.indexOf(r.id) >= 0; }))); },
       stop: function () { return Promise.resolve(stopRun()); },
       choose_projects_dir: function () { return Promise.resolve(DIR); },
+      open_url: function () { return Promise.resolve(true); },
+      set_ui_language: function (code) {
+        if (!Object.prototype.hasOwnProperty.call(LANG_TAGS, code)) return Promise.resolve({ ok: false });
+        D.app.ui_language = D.app.ui_language_setting = code;
+        return Promise.resolve({ ok: true, ui_language: code });
+      },
+      set_appearance: function (code) {
+        if (['system', 'light', 'dark'].indexOf(code) < 0) return Promise.resolve({ ok: false });
+        D.app.appearance = code;
+        return Promise.resolve({ ok: true, appearance: code });
+      },
       open_project_folder: function () { return Promise.resolve(true); },
       open_csv: function () { return Promise.resolve(true); },
       open_folder: function () { return Promise.resolve(true); },
@@ -1351,6 +1602,8 @@
     };
   }
 
+  document.documentElement.lang = LANG_TAGS[UI];
+  applyStatic();
   bind();
   connect();
 })();

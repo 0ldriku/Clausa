@@ -4,7 +4,8 @@ Clausa computes clause-based utterance-fluency measures for L2 English and
 Japanese speech. Read first:
 
 - `README.md`: what it does and how to use the app, for people who do not
-  program; `docs/command-line.md`: the command line.
+  program (also `README.ja.md`, `README.zh-CN.md`); `docs/command-line.md`:
+  the command line.
 - `docs/development.md`: how the code is organised, how changes are
   validated, how the app zips are built.
 - `docs/improvements.md`: what the default does differently from the paper's
@@ -30,6 +31,10 @@ Japanese speech. Read first:
 - Every path in code comes from `runner/paths.py` (repository-relative,
   overridable by `CLAUSA_*` variables); no absolute paths in code.
 - The pipeline scripts keep their command-line interfaces.
+- **README.md, README.ja.md and README.zh-CN.md change together; the English
+  is the source.** The same holds for the window's texts
+  (`runner/app_ui/strings.js`, and `NATIVE` in `runner/app.py`) and for the
+  three sections of each `packaging/*/read_me_first.html`.
 - Commit messages explain why, with the validation result.
 - Docs describe the code as it is; no development history or decision logs in
   the repository.

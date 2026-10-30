@@ -67,7 +67,12 @@ PER_ID_DEPTH = 50  # the longest output path in a session besides the recording'
 
 
 class ProjectError(Exception):
-    """A request about a project that cannot be done; the message is for the user."""
+    """A request about a project that cannot be done; the message is for the user, in English
+    (the log). key and params say it in the window's language (runner/app_ui/strings.js)."""
+
+    def __init__(self, message: str, key: str | None = None, **params):
+        super().__init__(message)
+        self.key, self.params = key, params
 
 
 def now_iso() -> str:
@@ -83,23 +88,26 @@ def check_name(name: str) -> str:
     """The name of a project, cleaned; ProjectError if it cannot be a folder name."""
     name = unicodedata.normalize("NFC", str(name or "")).strip()
     if not name:
-        raise ProjectError("Give the project a name.")
+        raise ProjectError("Give the project a name.", "project.name_empty")
     if os.name == "nt":
         if any(c in name for c in WINDOWS_RESERVED_CHARS) or any(ord(c) < 32 for c in name):
-            raise ProjectError(f"A project name cannot contain any of {' '.join(WINDOWS_RESERVED_CHARS)} "
-                               "(it becomes the name of its folder).")
+            chars = " ".join(WINDOWS_RESERVED_CHARS)
+            raise ProjectError(f"A project name cannot contain any of {chars} (it becomes the name of its folder).",
+                               "project.name_chars_windows", chars=chars)
         if name.endswith(".") or name.split(".")[0].strip().upper() in WINDOWS_RESERVED_NAMES:
             raise ProjectError("Windows does not allow that as a folder name (it ends with a dot, or is "
-                               "a name such as CON or NUL).")
+                               "a name such as CON or NUL).", "project.name_reserved_windows")
         if len(name) > WINDOWS_NAME_MAX:
             raise ProjectError(f"That name is too long: Windows limits the length of paths, so a project "
-                               f"name has at most {WINDOWS_NAME_MAX} characters.")
+                               f"name has at most {WINDOWS_NAME_MAX} characters.", "project.name_long_windows",
+                               max=WINDOWS_NAME_MAX)
     if any(c in name for c in "/:\\") or any(ord(c) < 32 for c in name):
-        raise ProjectError("A project name cannot contain / or : (it becomes the name of its folder).")
+        raise ProjectError("A project name cannot contain / or : (it becomes the name of its folder).",
+                           "project.name_chars")
     if name.startswith("."):
-        raise ProjectError("A project name cannot start with a dot (its folder would be hidden).")
+        raise ProjectError("A project name cannot start with a dot (its folder would be hidden).", "project.name_dot")
     if len(name.encode("utf-8")) > 200:
-        raise ProjectError("That name is too long for a folder name.")
+        raise ProjectError("That name is too long for a folder name.", "project.name_long")
     return name
 
 
@@ -231,7 +239,7 @@ def read_csv_rows(path: Path) -> tuple[bytes, dict[str, bytes]]:
 
 @dataclass
 class Recording:
-    """A recording of a project. The fields up to `audio` are saved in project.json;
+    """A recording of a project. The fields up to `error_params` are saved in project.json;
     the rest is the app's state while it runs."""
     id: str  # the file stem; the pipeline's file id, so <id>.TextGrid in the CSV
     file: str  # the file's name as added
@@ -239,17 +247,22 @@ class Recording:
     added: str  # ISO time
     status: str = "new"  # new, done or failed (running while a session analyses it)
     last_session: str | None = None  # the session folder that last analysed it (done or failed)
-    error: str | None = None  # why it failed, for the user
+    error: str | None = None  # why it failed, for the user, in English
     failed_stage: str | None = None  # the step it failed in ("Word alignment" ...)
     duration_s: float | None = None
     audio: str = ""  # its copy in audio/
+    error_code: str | None = None  # the error as a code (err.<code> in runner/app_ui/strings.js) and its
+    error_params: dict | None = None  # params, which the window says in its language; none from Clausa 1.0.1
     # not saved:
     progress: float = 0.0
     writing: set = field(default_factory=set)  # "words", "clauses": TextGrids being written
     measures: dict | None = None
     before: dict | None = None  # its saved state when a session started (a Stop restores it)
 
-    SAVED = ("id", "file", "source", "added", "status", "last_session", "error", "failed_stage", "duration_s", "audio")
+    SAVED = ("id", "file", "source", "added", "status", "last_session", "error", "failed_stage", "duration_s", "audio",
+             "error_code", "error_params")
+    # what a session changes (a Stop puts it back)
+    OUTCOME = ("status", "last_session", "error", "failed_stage", "error_code", "error_params")
 
     @property
     def name(self) -> str:
@@ -258,7 +271,7 @@ class Recording:
     def to_json(self) -> dict:
         data = {k: getattr(self, k) for k in self.SAVED}
         if self.status not in STATUSES:  # running: saved as it was before the session
-            data.update({k: (self.before or {}).get(k, data[k]) for k in ("status", "last_session", "error", "failed_stage")})
+            data.update({k: (self.before or {}).get(k, data[k]) for k in self.OUTCOME})
             if data["status"] not in STATUSES:
                 data["status"] = "new"
         return data
@@ -269,11 +282,12 @@ class Recording:
         rec = cls(**{k: v for k, v in d.items() if k in known})
         if rec.status not in STATUSES:
             rec.status = "new"
+        if not isinstance(rec.error_params, dict):
+            rec.error_params = None
         return rec
 
     def saved_state(self) -> dict:
-        return {"status": self.status, "last_session": self.last_session, "error": self.error,
-                "failed_stage": self.failed_stage, "measures": self.measures}
+        return {**{k: getattr(self, k) for k in self.OUTCOME}, "measures": self.measures}
 
 
 @dataclass
@@ -326,14 +340,16 @@ class Project:
     def create(cls, root: Path, name: str, language: str) -> Project:
         name = check_name(name)
         if language not in LANGS:
-            raise ProjectError(f"Unknown language: {language}")
+            raise ProjectError(f"Unknown language: {language}", "project.unknown_language", language=str(language))
         if cls.room(root / name) < 0:
             raise ProjectError(f"The projects folder's path is too long for a project of that name: Windows "
                                f"limits paths to 260 characters. Choose a shorter name, or a projects folder "
-                               f"with a shorter path in Settings ({root}).")
+                               f"with a shorter path in Settings ({root}).", "project.path_long_windows",
+                               root=str(root))
         root.mkdir(parents=True, exist_ok=True)
         if any(name_key(p.name) == name_key(name) for p in root.iterdir()):
-            raise ProjectError(f"There is already a project or folder called {name} in {root}.")
+            raise ProjectError(f"There is already a project or folder called {name} in {root}.", "project.exists_in",
+                               name=name, root=str(root))
         folder = root / name
         folder.mkdir()
         (folder / AUDIO_DIR).mkdir()
@@ -375,11 +391,13 @@ class Project:
         target = self.folder.parent / new_name
         clash = [p for p in self.folder.parent.iterdir() if name_key(p.name) == name_key(new_name) and p != self.folder]
         if clash:
-            raise ProjectError(f"There is already a project or folder called {clash[0].name}.")
+            raise ProjectError(f"There is already a project or folder called {clash[0].name}.", "project.exists",
+                               name=clash[0].name)
         longest = max([r.id for r in self.recordings], key=len, default="")
         if self.room(target, longest) < 0:
             raise ProjectError("That name is too long for this project: Windows limits paths to 260 characters, "
-                               "and its folder holds recordings with long names. Choose a shorter name.")
+                               "and its folder holds recordings with long names. Choose a shorter name.",
+                               "project.rename_long_windows")
         old_folder, old_name = self.folder, self.name
         os.rename(old_folder, target)  # also a change of case only, on a file system that ignores case
         self.folder, self.name = target, new_name
@@ -430,19 +448,20 @@ class Project:
     def find(self, rec_id: str) -> Recording | None:
         return next((r for r in self.recordings if r.id == rec_id), None)
 
-    def plan_add(self, files: list[Path]) -> tuple[list[tuple[Path, str, str]], list[str]]:
-        """Which files can be added: ([(file, id, audio name)], [refusals as plain messages])."""
+    def plan_add(self, files: list[Path]) -> tuple[list[tuple[Path, str, str]], list[ProjectError]]:
+        """Which files can be added: ([(file, id, audio name)], [refusals])."""
         taken = {name_key(r.id) for r in self.recordings}
         plan, refused = [], []
         for p in files:
             stem = unicodedata.normalize("NFC", p.stem)
             if name_key(stem) in taken:
-                refused.append(f"{p.name}: this project already has a recording named {stem}; "
-                               "rename the file to add it")
+                refused.append(ProjectError(f"{p.name}: this project already has a recording named {stem}; "
+                                            "rename the file to add it", "refused.taken", file=p.name, id=stem))
                 continue
             if self.room(self.folder, stem) < 0:
-                refused.append(f"{p.name}: the name is too long for Windows in this project's folder (paths have "
-                               "at most 260 characters); rename the file shorter to add it")
+                refused.append(ProjectError(f"{p.name}: the name is too long for Windows in this project's folder "
+                                            "(paths have at most 260 characters); rename the file shorter to add it",
+                                            "refused.long_windows", file=p.name))
                 continue
             taken.add(name_key(stem))
             plan.append((p, stem, stem + p.suffix.lower()))
@@ -457,7 +476,7 @@ class Project:
         folder.mkdir(exist_ok=True)
         dst = folder / audio
         if dst.exists():
-            raise ProjectError(f"{audio} is already in the project's audio folder")
+            raise ProjectError(f"{audio} is already in the project's audio folder", "project.audio_exists", audio=audio)
         try:
             clone_file(src, dst)
         except BaseException:

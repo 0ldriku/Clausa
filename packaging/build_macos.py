@@ -55,9 +55,11 @@ from runner import envs, models, paths  # noqa: E402
 
 MACOS = REPO / "packaging" / "macos"
 ENV_NAMES = (paths.ASR_ENV, paths.MFA_ENV, paths.JA_ENV)
-# The code that goes into app/ (git archive pathspecs). Not paper/ (paper mode, --paper-compat) or docs/:
-# the app runs the default pipeline only; paper mode stays in the repository.
-APP_PATHS = ("clausa", "runner", "pipeline", "models/README.md", "LICENSE.md", "README.md")
+# The code that goes into app/ (git archive pathspecs), with the README in its three languages. Not
+# paper/ (paper mode, --paper-compat) or docs/: the app runs the default pipeline only; paper mode
+# stays in the repository.
+APP_PATHS = ("clausa", "runner", "pipeline", "models/README.md", "LICENSE.md", "README.md", "README.ja.md",
+             "README.zh-CN.md")
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif"}
 TOOLS = ("git", "tar", "ditto", "xattr", "codesign", "install_name_tool", "otool", "sips")
 
@@ -416,7 +418,7 @@ def make_app(dest: Path, version: str, minimum: str) -> None:
             "LSArchitecturePriority": ["arm64"],
             "LSApplicationCategoryType": "public.app-category.education",
             "NSHighResolutionCapable": True,
-            "NSHumanReadableCopyright": "Clausa: code MIT, disfluency detector CC BY-NC-SA 4.0",
+            "NSHumanReadableCopyright": "© 2026 Jialiang Lu and Reiko Sato",
         }, f)
     (contents / "PkgInfo").write_text("APPL????")
     shutil.copy2(MACOS / "launcher.sh", contents / "MacOS" / "Clausa")
@@ -425,7 +427,7 @@ def make_app(dest: Path, version: str, minimum: str) -> None:
 
 
 def make_guide(dest: Path, version: str, minimum: str, numbers: dict[str, str], tmp: Path) -> None:
-    """Read me first.html from the template; numbers fills {{ZIP_GB}}, {{FOLDER_GB}} and {{FREE_GB}}."""
+    """Read me first.html from the template; numbers fills {{FREE_GB}} and the sentences of guide_notes."""
     icon = tmp / "icon_256.png"
     run(["sips", "-z", "256", "256", paths.APP_ICON, "--out", icon])
     html = (MACOS / "read_me_first.html").read_text(encoding="utf-8")
@@ -450,18 +452,35 @@ def setup_numbers(zip_bytes: int, root: Path, tars: dict[str, Path], models_incl
     download = 0 if models_included else sum(f["size"] for m in models.lock() for f in m["files"])
     peak = zip_bytes + folder + max(max(t.stat().st_size for t in tars.values()), download)
     free = -(-(peak + 3 * 10**9) // (5 * 10**9)) * 5
-    if models_included:
-        models_note = "<li>The speech models are included. No internet connection is needed.</li>"
-        first_start = "Setting up takes about two minutes."
-        unzip = "a few minutes"
-    else:
-        models_note = (f"<li>First start downloads <b>{download / 1e9:.1f} GB</b> of speech models once, "
-                       "so it needs an internet connection.</li>")
-        unzip = "a minute or less"
-        first_start = ("Setting up takes a few minutes, longer on a slow connection. If it stops, click "
-                       "<b>Try again</b>: it continues where it stopped.")
     return {"ZIP_GB": f"{zip_bytes / 1e9:.1f}", "FOLDER_GB": f"{(folder + download) / 1e9:.1f}",
-            "FREE_GB": str(free), "MODELS_NOTE": models_note, "FIRST_START_NOTE": first_start, "UNZIP_TIME": unzip}
+            "FREE_GB": str(free), **guide_notes(download, models_included)}
+
+
+def guide_notes(download: int, models_included: bool) -> dict[str, str]:
+    """The guide's sentences about the models and First start, in its three languages (its English,
+    Japanese and Chinese sections: {{MODELS_NOTE}}, {{MODELS_NOTE_JA}}, ...). download: the bytes
+    First start downloads."""
+    if models_included:
+        return {
+            "MODELS_NOTE": "<li>The speech models are included. No internet connection is needed.</li>",
+            "MODELS_NOTE_JA": "<li>音声モデルは同梱されています。インターネット接続は不要です。</li>",
+            "MODELS_NOTE_ZH": "<li>语音模型已包含在内，无需联网。</li>",
+            "FIRST_START_NOTE": "Setting up takes about two minutes.",
+            "FIRST_START_NOTE_JA": "セットアップには2分ほどかかります。",
+            "FIRST_START_NOTE_ZH": "安装大约需要两分钟。",
+        }
+    gb = f"{download / 1e9:.1f}"
+    return {
+        "MODELS_NOTE": (f"<li>First start downloads <b>{gb} GB</b> of speech models once, so it needs an "
+                        "internet connection.</li>"),
+        "MODELS_NOTE_JA": f"<li>First startは音声モデル（<b>{gb}GB</b>）を一度だけダウンロードするため、インターネット接続が必要です。</li>",
+        "MODELS_NOTE_ZH": f"<li>First start 会一次性下载 <b>{gb} GB</b> 的语音模型，因此需要联网。</li>",
+        "FIRST_START_NOTE": ("Setting up takes a few minutes, longer on a slow connection. If it stops, click "
+                             "<b>Try again</b>: it continues where it stopped."),
+        "FIRST_START_NOTE_JA": ("セットアップには数分かかります。回線が遅い場合はさらに時間がかかります。途中で止まった場合は"
+                                "<b>Try again</b>をクリックしてください。止まったところから再開します。"),
+        "FIRST_START_NOTE_ZH": "安装需要几分钟，网络较慢时会更久。如果中断，请点击 <b>Try again</b>：它会从中断处继续。",
+    }
 
 
 def audio_outside_envs(root: Path) -> list[str]:
@@ -677,8 +696,8 @@ def main() -> int:
         (root / "First start.command").chmod(0o755)
         if args.no_zip:  # the sizes come from the zip
             make_guide(root / "Read me first.html", args.version, minimum,
-                       {"ZIP_GB": "?", "FOLDER_GB": "?", "FREE_GB": "?", "MODELS_NOTE": "", "FIRST_START_NOTE": "",
-                        "UNZIP_TIME": "a minute or two"},
+                       {"ZIP_GB": "?", "FOLDER_GB": "?", "FREE_GB": "?",
+                        **dict.fromkeys(guide_notes(0, True), "")},
                        tmp)
 
     stray = audio_outside_envs(root)

@@ -44,6 +44,7 @@ using Microsoft.Win32;
 
 [assembly: System.Reflection.AssemblyTitle("Clausa")]
 [assembly: System.Reflection.AssemblyProduct("Clausa")]
+[assembly: System.Reflection.AssemblyCopyright("© 2026 Jialiang Lu and Reiko Sato")]
 [assembly: System.Reflection.AssemblyVersion("{{VERSION4}}")]
 [assembly: System.Reflection.AssemblyFileVersion("{{VERSION4}}")]
 [assembly: System.Reflection.AssemblyInformationalVersion("{{VERSION}}")]

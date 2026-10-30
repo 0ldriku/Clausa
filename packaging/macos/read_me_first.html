@@ -9,11 +9,20 @@
     --bg: #0c0c0c; --card: #151515; --line: #262626; --fg: #ededeb; --dim: #a1a19d;
     --accent: #22c55e; --accent-fg: #6ee7a0; --accent-bg: #16301f; --warn: #fbbf24;
     --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    /* one section per language; Japanese and Chinese in the system's fonts (macOS, then Windows) */
+    --font: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --font-ja: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, "Helvetica Neue", sans-serif;
+    --font-zh: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", "Helvetica Neue", sans-serif;
   }
   * { box-sizing: border-box; }
   html { background: var(--bg); }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 40px 20px 64px; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); }
+  section:lang(ja), .langs :lang(ja) { font-family: var(--font-ja); line-break: strict; }
+  section:lang(zh-Hans), .langs :lang(zh-Hans) { font-family: var(--font-zh); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 20px 64px; }
+  .langs { margin-bottom: 24px; color: var(--dim); font-size: 14px; text-align: right; }
+  .langs a { color: var(--accent-fg); }
+  section + section { margin-top: 64px; padding-top: 40px; border-top: 1px solid var(--line); }
   header { display: flex; align-items: center; gap: 18px; margin-bottom: 28px; }
   header img { width: 72px; height: 72px; flex-shrink: 0; }
   h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
@@ -39,16 +48,19 @@
   td { padding: 6px 8px; border-top: 1px solid var(--line); vertical-align: top; }
   td:first-child { white-space: nowrap; padding-left: 0; }
   footer { margin-top: 40px; color: var(--dim); font-size: 13px; }
-  @media (max-width: 520px) { main { padding: 24px 16px 48px; } header img { width: 56px; height: 56px; } h1 { font-size: 22px; } td:first-child { white-space: normal; } }
+  @media (max-width: 520px) { main { padding: 16px 16px 48px; } header img { width: 56px; height: 56px; } h1 { font-size: 22px; } td:first-child { white-space: normal; } }
 </style>
 </head>
 <body>
 <main>
+  <nav class="langs" aria-label="Language"><a href="#en">English</a> · <a href="#ja" lang="ja">日本語</a> · <a href="#zh" lang="zh-Hans">简体中文</a></nav>
+
+<section id="en">
   <header>
     <img src="{{ICON}}" alt="">
     <div>
       <h1>Clausa {{VERSION}}</h1>
-      <p>Fluency measures for learners' English and Japanese</p>
+      <p>Clause-based fluency measures for learners' speech</p>
     </div>
   </header>
 
@@ -58,6 +70,7 @@
   <h2>Before you start</h2>
   <ul>
     <li>A Mac with Apple Silicon and macOS {{MIN_MACOS}} or later.</li>
+    <li><b>16 GB</b> of memory or more.</li>
     <li><b>{{FREE_GB}} GB</b> of free space.</li>
     {{MODELS_NOTE}}
     <li>Keep the Clausa folder in your home folder, not in iCloud Drive, Dropbox, OneDrive or Google Drive.</li>
@@ -95,7 +108,7 @@
   </div>
 
   <h2>Results</h2>
-  <p>Each project is a folder in <span class="path">Documents/Clausa projects/</span>:</p>
+  <p>Each project is a folder in <span class="path">Documents/Clausa projects/</span>, or in the folder chosen in <b>Settings</b> › <b>Change folder…</b>:</p>
   <table>
     <tr><td><span class="path">uf_measures.csv</span></td><td>the measures, one row per recording</td></tr>
     <tr><td><span class="path">audio/</span></td><td>copies of the recordings</td></tr>
@@ -110,13 +123,150 @@
     <a href="mailto:oldriku@proton.me" style="color:var(--accent-fg)">oldriku@proton.me</a>, and attach the
     analysis's <span class="path">log.txt</span> from its session folder. If Clausa does not open, attach the
     <span class="path">logs</span> folder from the Clausa folder. Logs contain the recognised words. Send
-    recordings only if you may share them.</p>
+    logs and recordings only if you may share them.</p>
 
   <h2>Removing Clausa</h2>
-  <p>Quit Clausa and delete the Clausa folder. Your projects stay in Documents.</p>
+  <p>Quit Clausa and delete the Clausa folder. Your projects stay where they are.</p>
 
-  <footer>Clausa {{VERSION}} · MIT licence. Disfluency detector: CC BY-NC-SA 4.0.
-    See <span class="path">app/LICENSE.md</span>.</footer>
+  <footer>Clausa {{VERSION}} · © 2026 Jialiang Lu and Reiko Sato · MIT licence. Disfluency detector:
+    CC BY-NC-SA 4.0. See <span class="path">app/LICENSE.md</span>.</footer>
+</section>
+
+<section id="ja" lang="ja">
+  <header>
+    <img src="{{ICON}}" alt="">
+    <div>
+      <h1>Clausa {{VERSION}}</h1>
+      <p>学習者の発話のfluencyをclause単位で測る指標</p>
+    </div>
+  </header>
+
+  <p>Clausaは、学習者の発話の録音を分析し、録音ごとに9つのfluency指標を算出します。処理はすべてお使いのMac上で行われ、何もアップロードされません。</p>
+
+  <h2>始める前に</h2>
+  <ul>
+    <li>Appleシリコン搭載のMac、macOS {{MIN_MACOS}}以降。</li>
+    <li><b>16GB</b>以上のメモリ。</li>
+    <li><b>{{FREE_GB}}GB</b>の空き容量。</li>
+    {{MODELS_NOTE_JA}}
+    <li>Clausaフォルダーはホームフォルダーに置き、iCloud Drive、Dropbox、OneDrive、Google Driveの中には置かないでください。</li>
+  </ul>
+
+  <h2>セットアップ</h2>
+  <div class="card step">
+    <div class="num">1</div>
+    <div>
+      <h3>zipを展開</h3>
+      <p>zipをダブルクリックします。<span class="name">Clausa</span>フォルダーをホームフォルダーに移動します。</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">2</div>
+    <div>
+      <h3><span class="name">First start</span>をダブルクリック</h3>
+      <p>macOSにブロックされたら、<b>完了</b>をクリックします。次に<b>システム設定</b> › <b>プライバシーとセキュリティ</b>を開き、<b>このまま開く</b>をクリックします。</p>
+      <div class="mock" aria-hidden="true">
+        <div class="crumb">システム設定 › プライバシーとセキュリティ › セキュリティ</div>
+        <div class="row"><span>お使いのMacを保護するために“First start.command”がブロックされました。</span><span class="btn hl">このまま開く</span></div>
+      </div>
+      <p>{{FIRST_START_NOTE_JA}}ウィンドウに「Clausa is ready」と表示されるまで、フォルダーを移動しないでください。表示されたら<b>Open Clausa</b>をクリックします。</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">3</div>
+    <div>
+      <h3><span class="name">Clausa.app</span>を開く</h3>
+      <p><b>新規プロジェクト</b>をクリックし、名前を付けて録音の言語を選びます。<b>録音を追加</b>をクリックし、次に<b>開始</b>をクリックします。</p>
+    </div>
+  </div>
+
+  <h2>結果</h2>
+  <p>各プロジェクトは、「書類」フォルダー内の<span class="path">Clausa projects</span>（または<b>設定</b> › <b>フォルダーを変更…</b>で選んだフォルダー）の中にある1つのフォルダーです。</p>
+  <table>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>指標。録音1件につき1行</td></tr>
+    <tr><td><span class="path">audio/</span></td><td>録音のコピー</td></tr>
+    <tr><td><span class="path">sessions/</span></td><td>各分析のTextGridとログ</td></tr>
+  </table>
+  <p>TextGridを<a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a>で開くと、clauseとpauseを確認できます。</p>
+
+  <h2>問題が起きたら</h2>
+  <p>ウィンドウ下部の<b>ログ</b>をクリックするとログを表示できます。問題を報告するには、<a href="https://github.com/0ldriku/Clausa/issues" style="color:var(--accent-fg)">GitHub</a>でissueを作成するか、<a href="mailto:oldriku@proton.me" style="color:var(--accent-fg)">oldriku@proton.me</a>にメールし、その分析のセッションフォルダーにある<span class="path">log.txt</span>を添付してください。Clausaが開かない場合は、Clausaフォルダーの<span class="path">logs</span>フォルダーを添付してください。ログには認識された単語が含まれるので、ログや録音は、共有に問題がない場合のみ送ってください。</p>
+
+  <h2>Clausaの削除</h2>
+  <p>Clausaを終了し、Clausaフォルダーを削除します。プロジェクトはそのまま残ります。</p>
+
+  <footer>Clausa {{VERSION}} · © 2026 Jialiang Lu and Reiko Sato · MITライセンス。Disfluency検出器: CC BY-NC-SA 4.0。詳細は<span class="path">app/LICENSE.md</span>にあります。</footer>
+</section>
+
+<section id="zh" lang="zh-Hans">
+  <header>
+    <img src="{{ICON}}" alt="">
+    <div>
+      <h1>Clausa {{VERSION}}</h1>
+      <p>基于 clause 的学习者口语 fluency 指标</p>
+    </div>
+  </header>
+
+  <p>Clausa 分析学习者的口语录音，为每个录音给出九项 fluency 指标。一切都在你的 Mac 上运行，不会上传任何内容。</p>
+
+  <h2>开始之前</h2>
+  <ul>
+    <li>一台搭载 Apple 芯片、macOS {{MIN_MACOS}} 或更高版本的 Mac。</li>
+    <li><b>16 GB</b> 或以上内存。</li>
+    <li><b>{{FREE_GB}} GB</b> 可用空间。</li>
+    {{MODELS_NOTE_ZH}}
+    <li>把 Clausa 文件夹放在个人文件夹中，不要放在 iCloud 云盘、Dropbox、OneDrive 或 Google 云端硬盘中。</li>
+  </ul>
+
+  <h2>安装</h2>
+  <div class="card step">
+    <div class="num">1</div>
+    <div>
+      <h3>解压</h3>
+      <p>双击 zip 文件。把 <span class="name">Clausa</span> 文件夹移到个人文件夹。</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">2</div>
+    <div>
+      <h3>双击 <span class="name">First start</span></h3>
+      <p>如果 macOS 阻止它运行，点击<b>完成</b>。然后打开<b>系统设置</b> › <b>隐私与安全性</b>，点击<b>仍要打开</b>。</p>
+      <div class="mock" aria-hidden="true">
+        <div class="crumb">系统设置 › 隐私与安全性 › 安全性</div>
+        <div class="row"><span>已阻止“First start.command”以保护 Mac。</span><span class="btn hl">仍要打开</span></div>
+      </div>
+      <p>{{FIRST_START_NOTE_ZH}}在窗口显示“Clausa is ready”之前，不要移动文件夹。然后点击 <b>Open Clausa</b>。</p>
+    </div>
+  </div>
+  <div class="card step">
+    <div class="num">3</div>
+    <div>
+      <h3>打开 <span class="name">Clausa.app</span></h3>
+      <p>点击<b>新建项目</b>，为项目命名并选择录音语言。点击<b>添加录音</b>，再点击<b>开始</b>。</p>
+    </div>
+  </div>
+
+  <h2>结果</h2>
+  <p>每个项目是“文稿”文件夹中 <span class="path">Clausa projects</span>（或在<b>设置</b> › <b>更改文件夹…</b>中选择的文件夹）里的一个文件夹：</p>
+  <table>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>指标，每个录音一行</td></tr>
+    <tr><td><span class="path">audio/</span></td><td>录音的副本</td></tr>
+    <tr><td><span class="path">sessions/</span></td><td>每轮分析的 TextGrid 和日志</td></tr>
+  </table>
+  <p>在 <a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a> 中打开 TextGrid，检查 clause 和 pause。</p>
+
+  <h2>问题</h2>
+  <p>点击窗口底部的<b>日志</b>可查看日志。要报告问题，请在
+    <a href="https://github.com/0ldriku/Clausa/issues" style="color:var(--accent-fg)">GitHub</a> 上提交 issue，或发邮件到
+    <a href="mailto:oldriku@proton.me" style="color:var(--accent-fg)">oldriku@proton.me</a>，并附上该次分析的
+    <span class="path">log.txt</span>（在其分析轮次的文件夹中）。如果 Clausa 无法打开，请附上 Clausa 文件夹中的
+    <span class="path">logs</span> 文件夹。日志包含识别出的单词。请确认可以分享后，再发送日志和录音。</p>
+
+  <h2>卸载 Clausa</h2>
+  <p>退出 Clausa，然后删除 Clausa 文件夹。你的项目会留在原处。</p>
+
+  <footer>Clausa {{VERSION}} · © 2026 Jialiang Lu、Reiko Sato · MIT 许可证。Disfluency 检测器：CC BY-NC-SA 4.0。详见 <span class="path">app/LICENSE.md</span>。</footer>
+</section>
 </main>
 </body>
 </html>

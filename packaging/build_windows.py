@@ -440,16 +440,34 @@ def setup_numbers(zip_bytes: int, root: Path, models_included: bool) -> dict[str
     after = folder + torch_files["bytes"] + (0 if models_included else models_bytes) - (wheels if models_included else 0)
     peak = zip_bytes + after + wheels
     free = -(-(peak + 3 * 10**9) // (5 * 10**9)) * 5
-    if models_included:
-        models_note = "<li>Everything is included. No internet connection is needed.</li>"
-        first_start = "Setting up takes a few minutes."
-    else:
-        models_note = (f"<li>The first start downloads <b>{download / 1e9:.1f} GB</b> once, so it needs an "
-                       "internet connection.</li>")
-        first_start = ("Setting up takes a few minutes, longer on a slow connection. If it stops, click "
-                       "<b>Try again</b>: it continues where it stopped.")
     return {"ZIP_GB": f"{zip_bytes / 1e9:.1f}", "FOLDER_GB": f"{after / 1e9:.1f}",
-            "FREE_GB": str(free), "MODELS_NOTE": models_note, "FIRST_START_NOTE": first_start}
+            "FREE_GB": str(free), **guide_notes(download, models_included)}
+
+
+def guide_notes(download: int, models_included: bool) -> dict[str, str]:
+    """The guide's sentences about the download and First start, in its three languages (its English,
+    Japanese and Chinese sections: {{MODELS_NOTE}}, {{MODELS_NOTE_JA}}, ...). download: the bytes
+    the first start downloads."""
+    if models_included:
+        return {
+            "MODELS_NOTE": "<li>Everything is included. No internet connection is needed.</li>",
+            "MODELS_NOTE_JA": "<li>すべて同梱されています。インターネット接続は不要です。</li>",
+            "MODELS_NOTE_ZH": "<li>所有内容已包含在内，无需联网。</li>",
+            "FIRST_START_NOTE": "Setting up takes a few minutes.",
+            "FIRST_START_NOTE_JA": "セットアップには数分かかります。",
+            "FIRST_START_NOTE_ZH": "安装需要几分钟。",
+        }
+    gb = f"{download / 1e9:.1f}"
+    return {
+        "MODELS_NOTE": f"<li>The first start downloads <b>{gb} GB</b> once, so it needs an internet connection.</li>",
+        "MODELS_NOTE_JA": f"<li>初回起動時に<b>{gb}GB</b>を一度だけダウンロードするため、インターネット接続が必要です。</li>",
+        "MODELS_NOTE_ZH": f"<li>首次启动会一次性下载 <b>{gb} GB</b>，因此需要联网。</li>",
+        "FIRST_START_NOTE": ("Setting up takes a few minutes, longer on a slow connection. If it stops, click "
+                             "<b>Try again</b>: it continues where it stopped."),
+        "FIRST_START_NOTE_JA": ("セットアップには数分かかります。回線が遅い場合はさらに時間がかかります。途中で止まった場合は"
+                                "<b>Try again</b>をクリックしてください。止まったところから再開します。"),
+        "FIRST_START_NOTE_ZH": "安装需要几分钟，网络较慢时会更久。如果中断，请点击 <b>Try again</b>：它会从中断处继续。",
+    }
 
 
 def make_guide(dest: Path, version: str, max_root: int, numbers: dict[str, str]) -> None:
@@ -670,7 +688,7 @@ def main() -> int:
 
     if args.no_zip:
         make_guide(root / "Read me first.html", args.version, max_root,
-                   {"ZIP_GB": "?", "FOLDER_GB": "?", "FREE_GB": "?", "MODELS_NOTE": "", "FIRST_START_NOTE": ""})
+                   {"ZIP_GB": "?", "FOLDER_GB": "?", "FREE_GB": "?", **dict.fromkeys(guide_notes(0, True), "")})
         say("Not zipping (--no-zip)")
         return 0
     say(f"Zipping to {zip_path.name}")

@@ -20,7 +20,7 @@ Qwen3-ForcedAligner, Apache 2.0; GiNZA-Electra, MIT; the MFA models and
 
 ## MIT License
 
-Copyright (c) 2026 the authors
+Copyright (c) 2026 Jialiang Lu and Reiko Sato
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

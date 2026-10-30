@@ -98,6 +98,7 @@ One recording of 2-3 minutes:
 | `CLAUSA_CACHE` | `.cache/` | where models and caches go |
 | `CLAUSA_FILLER_MODEL` | `models/filler_classifier/model_podcastfillers_neural_v1_full/model.pt` | the filled-pause classifier |
 | `CLAUSA_PROJECTS` | `~/Documents/Clausa projects` | the app's projects |
+| `CLAUSA_UI_LANGUAGE` | `ui_language` in `settings.json`, else the system's | `en`, `ja` or `zh-CN`: the app window's language. Settings › Display language sets `ui_language`. |
 | `CLAUSA_TORCH` | auto | `cuda` or `cpu` for `setup` |
 | `HF_ENDPOINT` | `https://huggingface.co` | a mirror for the models |
 

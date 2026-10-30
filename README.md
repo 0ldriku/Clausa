@@ -19,8 +19,8 @@ The name comes from *clause* and *pausa*, Latin for pause.
 
 ## Download
 
-- Mac: [Clausa-1.0.1-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-macos-arm64.zip)
-- Windows: [Clausa-1.0.1-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.1/Clausa-1.0.1-windows-x64.zip)
+- Mac: [Clausa-1.0.2-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-macos-arm64.zip)
+- Windows: [Clausa-1.0.2-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-windows-x64.zip)
 - Linux: the [command line](docs/command-line.md)
 
 ## Requirements

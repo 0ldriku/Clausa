@@ -264,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     shown = threading.Event()  # the page has loaded
     code = None
     try:
-        from runner.app import mac_app_name, windows_app_id
+        from runner.app import DARK_BG, LIGHT_BG, mac_app_name, system_light, windows_app_id
         if sys.platform == "darwin":
             mac_app_name("Clausa")
         elif os.name == "nt":
@@ -272,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         import webview
         window = webview.create_window(
             "Clausa: First start", url=str(paths.APP_UI_DIR / "first-start.html"), js_api=api,
-            width=760, height=720, min_size=(600, 520), background_color="#111111")
+            width=760, height=720, min_size=(600, 520), background_color=LIGHT_BG if system_light() else DARK_BG)
         api._window = window
 
         def loaded() -> None:
