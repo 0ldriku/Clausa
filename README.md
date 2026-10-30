@@ -27,8 +27,12 @@ The name comes from *clause* and *pausa*, Latin for pause.
 |---|---|---|
 | System | Apple Silicon, macOS 14 or later | 64-bit Windows 11, or Windows 10 with Microsoft Edge |
 | Graphics card | built in | NVIDIA with 8 GB or more; optional, without it about 3 times slower |
+| Memory | 16 GB or more | 16 GB or more; 32 GB without an NVIDIA card |
 | Free space | 20 GB | 30 GB |
 | Internet | for the first start, which downloads 8.3 GB | for the first start, which downloads 11.8 GB |
+
+Everything runs on your computer: Clausa collects nothing and sends nothing.
+It uses the internet only to download the models at the first start.
 
 ## Set up
 
@@ -61,7 +65,8 @@ up stops, start it again: it continues where it stopped.
 3. Click **Start**.
 4. When it finishes, click **Open CSV** to see the measures.
 
-Projects are saved in `Documents/Clausa projects`.
+Projects are saved in `Documents/Clausa projects`, unless you choose another
+folder in **Settings** › **Change folder…**.
 
 ## Measures
 
