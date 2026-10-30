@@ -116,26 +116,31 @@ minutes of audio in all.
 
 ## FAQ
 
-**What does Clausa give me?**
-The main output is a TextGrid file for each recording, with the start and end
-time of each word, pause, disfluency and clause. From these, Clausa's default
-calculator computes the nine [measures](#measures) into `uf_measures.csv`. For
-other measures, compute them from the TextGrid files, which are in each
+### What does Clausa give me?
+
+A TextGrid file for each recording: the start and end time of each word,
+pause, disfluency and clause. This is the main output.
+
+Clausa also computes the nine [measures](#measures) from it into
+`uf_measures.csv`. For other measures, use the TextGrid files, in each
 session's `clauses` folder.
 
-**Can I analyse a conversation or an interview?**
-Yes. Clausa transcribes and annotates all the speech in a recording, but it
-does not yet tell speakers apart (speaker diarization is planned). With more
-than one speaker, the measures mix the speakers, so use the TextGrid files.
+### Can I analyse a conversation or an interview?
 
-**What counts as a pause?**
+Yes. Clausa transcribes and annotates all the speech, but does not yet tell
+speakers apart (speaker diarization is planned). With more than one speaker
+the measures mix them, so use the TextGrid files.
+
+### What counts as a pause?
+
 A silence of 0.25 s or longer between words.
 
-**Can Clausa recompute the measures after I correct a TextGrid?**
-Not yet. The measure calculation will become a separate step in a later
-version.
+### Can Clausa recompute the measures after I correct a TextGrid?
 
-**Why are my results different on another computer?**
+Not yet. A later version will make the measure calculation a separate step.
+
+### Why are my results different on another computer?
+
 Different computers can give slightly different transcripts. Analyse all
 recordings of one study on the same computer.
 
