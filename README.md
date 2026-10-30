@@ -2,13 +2,13 @@
 
 English · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Clausa turns recordings of second-language speech into clause-based utterance
-fluency measures. It transcribes the speech, aligns each word, divides
-the speech into clauses and finds disfluencies, including filled pauses the
-transcript missed. It then gives nine speed and pause measures for each
-recording, including pauses in the middle and at the end of clauses. The
-measures come in a spreadsheet, and the annotations in TextGrid files you can
-open in Praat. Clausa works with English and Japanese for now.
+Clausa turns speech recordings into clause-based utterance fluency measures.
+It transcribes the speech, aligns each word, divides the speech into clauses
+and finds disfluencies, including filled pauses the transcript missed. It then
+gives nine speed and pause measures for each recording, including pauses in the
+middle and at the end of clauses. The measures come in a spreadsheet and the
+annotations in TextGrid files. Clausa was made for second-language speech and
+works with first-language speech too, in English and Japanese for now.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
@@ -63,7 +63,7 @@ up stops, start it again: it continues where it stopped.
 
 1. Click **New project**. Name it and choose English or Japanese.
 2. Click **Add recordings** or drag audio files onto the window. Each file
-   should hold one learner and only the learner's speech.
+   should hold one speaker and only that speaker's speech.
 3. Click **Start**.
 4. When it finishes, click **Open CSV** to see the measures.
 

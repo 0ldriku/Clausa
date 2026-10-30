@@ -2,7 +2,7 @@
 
 [English](README.md) · [日本語](README.ja.md) · 简体中文
 
-Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluency 指标。它先转写语音，对齐每个单词，再把语音切分为 clause 并找出 disfluency，包括转写遗漏的 filled pause。然后为每个录音给出九项 speed 和 pause 指标，其中包括 clause 内和 clause 末的 pause。指标输出为表格文件，标注输出为 TextGrid 文件，可在 Praat 中打开。Clausa 目前支持英语和日语。
+Clausa 把口语录音转换为基于 clause 的 utterance fluency 指标。它先转写语音，对齐每个单词，再把语音切分为 clause 并找出 disfluency，包括转写遗漏的 filled pause。然后为每个录音给出九项 speed 和 pause 指标，其中包括 clause 内和 clause 末的 pause。指标输出为表格文件，标注输出为 TextGrid 文件。Clausa 为第二语言口语而设计，也适用于第一语言口语，目前支持英语和日语。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
@@ -53,7 +53,7 @@ Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluenc
 ## 使用
 
 1. 点击**新建项目**。为项目命名，并选择英语或日语。
-2. 点击**添加录音**，或把音频文件拖到窗口上。每个文件应只有一位学习者，且只包含这位学习者的语音。
+2. 点击**添加录音**，或把音频文件拖到窗口上。每个文件应只包含一位说话人的语音。
 3. 点击**开始**。
 4. 完成后，点击**打开 CSV** 查看指标。
 

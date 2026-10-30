@@ -1302,7 +1302,7 @@ class Api:
         r.writing.clear()
         if stage == "asr_stage1" and detail == "No words detected":
             set_error(r, "no_speech", "No speech was found in this recording, so it was skipped. "
-                                      "Check that the file holds the learner's speech.")
+                                      "Check that the file holds the speaker's speech.")
         elif stage == "asr_stage1" and GPU_MEMORY_ERROR.search(detail):
             set_error(r, "gpu_memory", GPU_MEMORY)
         elif stage == "mfa_stage2" and detail:

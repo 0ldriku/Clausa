@@ -39,7 +39,7 @@ window.STRINGS = {
 
     "about.title": "About Clausa",
     "about.version": "Version {version}",
-    "about.description": "Automatic clause-based fluency analysis of L2 speech, from audio to speed and pause measures and Praat TextGrids.",
+    "about.description": "From audio to clause-based fluency measures and TextGrid files.",
     "about.copyright": "© 2026 Jialiang Lu and Reiko Sato",
     "about.licence": "Code: MIT licence. Disfluency detector: CC BY-NC-SA 4.0, for non-commercial use. Details: LICENSE.md in the app folder.",
     "about.cite": "If you use Clausa, please cite:",
@@ -276,7 +276,7 @@ window.STRINGS = {
     "bin.recycle_bin": "Recycle Bin",
 
     // sent by the backend (runner/app.py, runner/projects.py) as a key and params beside the English
-    "err.no_speech": "No speech was found in this recording, so it was skipped. Check that the file holds the learner's speech.",
+    "err.no_speech": "No speech was found in this recording, so it was skipped. Check that the file holds the speaker's speech.",
     "err.gpu_memory": "The graphics card ran out of memory during speech recognition. Close other programs that use the graphics card, then analyse again. Clausa needs an NVIDIA graphics card with at least 8 GB of memory; on Windows, leave the NVIDIA Control Panel's \"CUDA - Sysmem Fallback Policy\" at its default (not \"Prefer No Sysmem Fallback\").",
     "err.alignment_failed": "Word alignment failed for this recording: {detail}. Its measures are not shown; the log has the details.",
     "err.filler_failed": "Filled pauses failed for this recording, so its pauses were measured without that step and are not comparable with the others: it is left out of the project's CSV (the session folder's own CSV still has that row). The log has the details.",
@@ -353,7 +353,7 @@ window.STRINGS = {
 
     "about.title": "Clausaについて",
     "about.version": "バージョン{version}",
-    "about.description": "第二言語の発話のfluencyをclause単位で自動分析し、音声からspeed・pauseの指標とPraatのTextGridを作成します。",
+    "about.description": "音声から、clause単位のfluency指標とTextGridファイルを作成します。",
     "about.copyright": "© 2026 Jialiang Lu and Reiko Sato",
     "about.licence": "コード: MITライセンス。Disfluency検出器: CC BY-NC-SA 4.0（非営利利用のみ）。詳細はアプリフォルダー内のLICENSE.mdを参照してください。",
     "about.cite": "Clausaを使用した場合は、次の論文を引用してください。",
@@ -589,7 +589,7 @@ window.STRINGS = {
     "bin.recycle_bin": "ごみ箱",
 
     // sent by the backend (runner/app.py, runner/projects.py) as a key and params beside the English
-    "err.no_speech": "この録音からは発話が検出されなかったため、スキップしました。ファイルに学習者の発話が入っているか確認してください。",
+    "err.no_speech": "この録音からは発話が検出されなかったため、スキップしました。ファイルに話者の発話が入っているか確認してください。",
     "err.gpu_memory": "音声認識の途中でGPUのメモリが不足しました。GPUを使う他のプログラムを閉じてから、再分析してください。Clausaには8GB以上のメモリを持つNVIDIA製GPUが必要です。Windowsでは、NVIDIA コントロール パネルの「CUDA - Sysmem Fallback Policy」を既定のままにしてください（「Prefer No Sysmem Fallback」にはしないでください）。",
     "err.alignment_failed": "この録音の単語アライメントに失敗しました（{detail}）。指標は表示されません。詳細はログにあります。",
     "err.filler_failed": "この録音のFilled pause検出に失敗したため、pauseはそのステップなしで測定され、他の録音と比較できません。プロジェクトのCSVには含めていません（セッションフォルダーのCSVにはその行があります）。詳細はログにあります。",
@@ -666,7 +666,7 @@ window.STRINGS = {
 
     "about.title": "关于 Clausa",
     "about.version": "版本 {version}",
-    "about.description": "基于 clause 的二语口语 fluency 自动分析：从音频生成 speed 和 pause 指标以及 Praat TextGrid。",
+    "about.description": "从音频生成基于 clause 的 fluency 指标和 TextGrid 文件。",
     "about.copyright": "© 2026 Jialiang Lu、Reiko Sato",
     "about.licence": "代码：MIT 许可证。Disfluency 检测器：CC BY-NC-SA 4.0，仅限非商业用途。详见 app 文件夹中的 LICENSE.md。",
     "about.cite": "如果你使用 Clausa，请引用：",
@@ -902,7 +902,7 @@ window.STRINGS = {
     "bin.recycle_bin": "回收站",
 
     // sent by the backend (runner/app.py, runner/projects.py) as a key and params beside the English
-    "err.no_speech": "此录音中未检测到语音，已跳过。请检查文件是否包含学习者的语音。",
+    "err.no_speech": "此录音中未检测到语音，已跳过。请检查文件是否包含说话人的语音。",
     "err.gpu_memory": "语音识别时显存不足。请关闭其他使用显卡的程序，然后重新分析。Clausa 需要显存至少 8 GB 的 NVIDIA 显卡；在 Windows 上，请将 NVIDIA 控制面板中的“CUDA - Sysmem Fallback Policy”保持默认（不要选“Prefer No Sysmem Fallback”）。",
     "err.alignment_failed": "此录音的单词对齐失败：{detail}。其指标不显示；详情见日志。",
     "err.filler_failed": "此录音的 Filled pause 检测失败，其 pause 是跳过这一步测得的，无法与其他录音比较，因此未列入项目的 CSV（该轮分析文件夹中的 CSV 仍有这一行）。详情见日志。",

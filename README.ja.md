@@ -2,7 +2,7 @@
 
 [English](README.md) · 日本語 · [简体中文](README.zh-CN.md)
 
-Clausaは、第二言語の発話の録音から、clauseを単位とするutterance fluencyの指標を算出します。音声を書き起こし、各単語を音声にアライメントし、発話をclauseに分割し、書き起こしから漏れたfilled pauseを含むdisfluencyを検出します。そのうえで、録音ごとにspeedとpauseに関する9つの指標を算出します。指標には、clause内のpauseとclause末のpauseを区別したものも含まれます。指標はスプレッドシートに、アノテーションはPraatで開けるTextGridファイルに保存されます。現在、Clausaは英語と日本語に対応しています。
+Clausaは、発話の録音から、clauseを単位とするutterance fluencyの指標を算出します。音声を書き起こし、各単語を音声にアライメントし、発話をclauseに分割し、書き起こしから漏れたfilled pauseを含むdisfluencyを検出します。そのうえで、録音ごとにspeedとpauseに関する9つの指標を算出します。指標には、clause内のpauseとclause末のpauseを区別したものも含まれます。指標はスプレッドシートに、アノテーションはTextGridファイルに保存されます。Clausaは第二言語の発話のために作られましたが、第一言語の発話にも使えます。現在は英語と日本語に対応しています。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
@@ -52,7 +52,7 @@ Clausaは、第二言語の発話の録音から、clauseを単位とするutter
 ## 使い方
 
 1. **新規プロジェクト**をクリックします。名前を付け、英語か日本語を選びます。
-2. **録音を追加**をクリックするか、音声ファイルをウィンドウにドラッグします。1つのファイルには、学習者1人の発話だけを入れてください。
+2. **録音を追加**をクリックするか、音声ファイルをウィンドウにドラッグします。1つのファイルには、話者1人の発話だけを入れてください。
 3. **開始**をクリックします。
 4. 分析が終わったら、**CSVを開く**をクリックすると指標を確認できます。
 
