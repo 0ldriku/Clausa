@@ -7,32 +7,57 @@ mode, `--paper-compat`, still runs the article's pipeline exactly. See
 ## Agreement with human annotation
 
 Scored with the article's RQ1-RQ3 scripts on its 40 English and 40 Japanese
-recordings. "Paper mode" is the article's pipeline run again, so its values
-differ slightly from the article's. "Default" is Clausa 1.0.1.
+recordings, against the same human annotation. "Article" is what the article
+reports; "Clausa" is Clausa's default analysis (1.0.2; its results are the same
+as 1.0.1's). r is Pearson's correlation and ICC the intraclass correlation
+(single measure, absolute agreement) between Clausa's and the human
+annotation's measures.
 
-| Statistic | Japanese, paper mode | Japanese, default | English, paper mode | English, default |
+| Statistic | Japanese, article | Japanese, Clausa | English, article | English, Clausa |
 |---|---|---|---|---|
-| RQ1 κ, clause boundaries | .673 | **.704** | .749 | **.763** |
-| RQ1 κ, midpoint projection | .677 | **.711** | .827 | **.848** |
-| RQ2 κ, pause location | .689 | **.718** | .855 | **.879** |
-| AR ICC | .919 | **.975** | .952 | .951 |
-| SR ICC | .993 | .991 | .982 | .982 |
-| MLR ICC | .983 | .980 | .962 | .962 |
-| MCPR ICC | .952 | .963 | .965 | .953 |
-| ECPR ICC | .748 | .807 | .902 | **.943** |
-| PR ICC | .973 | **.988** | .958 | .952 |
-| MCPD ICC | .878 | **.964** | .879 | **.921** |
-| ECPD ICC | .861 | **.970** | .972 | .979 |
-| MPD ICC | .899 | **.985** | .960 | .975 |
+| RQ1 κ, clause boundaries | .674 | **.704** | .745 | **.763** |
+| RQ2 κ, pause location | .673 | **.718** | .848 | **.879** |
 
-Bold means clearly better: both bootstrap confidence intervals, by file and by
-speaker, exclude 0, and the result holds when any one file is left out. Nothing
-got clearly worse.
+Japanese:
+
+| Measure | r, article | r, Clausa | ICC, article | ICC, Clausa |
+|---|---|---|---|---|
+| AR | .946 | **.975** | .918 | **.975** |
+| SR | .996 | .995 | .991 | .991 |
+| MLR | .993 | .992 | .981 | .980 |
+| MCPR | .968 | .974 | .958 | .963 |
+| ECPR | .836 | .818 | .732 | .807 |
+| PR | .986 | .989 | .978 | **.988** |
+| MCPD | .951 | **.979** | .883 | **.964** |
+| ECPD | .954 | .977 | .840 | **.970** |
+| MPD | .969 | **.992** | .895 | **.985** |
+
+English:
+
+| Measure | r, article | r, Clausa | ICC, article | ICC, Clausa |
+|---|---|---|---|---|
+| AR | .952 | .956 | .949 | .951 |
+| SR | .990 | .990 | .982 | .982 |
+| MLR | .968 | .969 | .961 | .962 |
+| MCPR | .968 | .972 | .964 | .953 |
+| ECPR | .873 | **.943** | .862 | **.943** |
+| PR | .970 | .970 | .956 | .952 |
+| MCPD | .895 | **.930** | .880 | **.921** |
+| ECPD | .979 | .982 | .973 | .979 |
+| MPD | .976 | .982 | .959 | **.975** |
+
+Bold means clearly better: the bootstrap confidence intervals of the
+difference, by file and by speaker, both exclude 0, and the difference keeps
+its sign when any one file is left out. Nothing got clearly worse. One value
+is a little lower, Japanese ECPR's r (.836 to .818), well within chance; its
+ICC rose (.732 to .807).
 
 The improvements were found on these same recordings. The figures show that
 real errors were fixed, not how Clausa will do on new data.
 
 ## What changed
+
+Each change was measured on its own, against a rerun of the article's pipeline.
 
 | Change | Language | Effect |
 |---|---|---|
@@ -45,4 +70,4 @@ real errors were fixed, not how Clausa will do on new data.
 | A bug fix in splitting Japanese run-on clauses | Japanese | RQ1 κ +.003 |
 
 Clausa no longer removes interview phrases from Japanese recordings. Each
-recording should hold only the learner's speech.
+recording should hold only the speaker's speech.

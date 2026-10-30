@@ -65,4 +65,5 @@ runs again. One rerun on Linux with an RTX 5090:
 | article | .674 | .673 | .745 | .848 |
 | rerun in paper mode | .673 | .689 | .749 | .855 |
 
-This rerun is the baseline in [Improvements over the paper](improvements.md).
+[Improvements over the paper](improvements.md) compares Clausa with the
+article's own results; this rerun is the baseline for the effect of each change.
