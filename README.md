@@ -123,14 +123,6 @@ calculator computes the nine [measures](#measures) into `uf_measures.csv`. For
 other measures, compute them from the TextGrid files, which are in each
 session's `clauses` folder.
 
-**Should I prepare my recordings first?**
-- Cut them to the part you want to analyse. The measures run from the first
-  word to the last, so silence at the start and end does not count.
-- Loudness normalisation is not needed. Avoid clipping when you record.
-- Noise reduction is usually not needed. Strong noise reduction can remove
-  quiet speech and filled pauses, which changes the pause measures. If you use
-  it, use the same settings for every recording.
-
 **Can I analyse a conversation or an interview?**
 Yes. Clausa transcribes and annotates all the speech in a recording, but it
 does not yet tell speakers apart (speaker diarization is planned). With more
