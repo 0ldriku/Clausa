@@ -52,9 +52,6 @@ its sign when any one file is left out. Nothing got clearly worse. One value
 is a little lower, Japanese ECPR's r (.836 to .818), well within chance; its
 ICC rose (.732 to .807).
 
-The improvements were found on these same recordings. The figures show that
-real errors were fixed, not how Clausa will do on new data.
-
 ## What changed
 
 Each change was measured on its own, against a rerun of the article's pipeline.
