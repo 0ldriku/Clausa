@@ -1,5 +1,7 @@
 # Clausa
 
+English · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
+
 Clausa turns recordings of second-language speech into clause-based utterance
 fluency measures. It transcribes the speech, aligns each word, divides
 the speech into clauses and finds disfluencies, including filled pauses the
