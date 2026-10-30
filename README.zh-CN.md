@@ -41,7 +41,7 @@ Clausa 把第二语言口语的录音转换为基于 clause 的 utterance fluenc
 
 **Windows**
 
-1. 右键单击 zip 文件，选择**全部解压缩**。
+1. 右键单击 zip 文件，选择**全部提取**。
 2. 双击 `Clausa` 文件夹中的 **Clausa.exe**。如果 Windows 显示“Windows
    已保护你的电脑”，点击**更多信息**，再点击**仍要运行**。
 3. 等窗口显示 Ready，然后点击 **Open Clausa**。
