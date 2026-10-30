@@ -2,13 +2,10 @@
 
 English · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Clausa turns speech recordings into clause-based utterance fluency measures.
-It transcribes the speech, aligns each word, divides the speech into clauses
-and finds disfluencies, including filled pauses the transcript missed. It then
-gives nine speed and pause measures for each recording, including pauses in the
-middle and at the end of clauses. The measures come in a spreadsheet and the
-annotations in TextGrid files. Clausa was made for second-language speech and
-works with first-language speech too, in English and Japanese for now.
+Clausa does the annotation work of utterance fluency research automatically.
+Give it speech recordings and it returns the annotations as TextGrid files
+(words, pauses, disfluencies, clauses). It works with English and Japanese,
+for second- or first-language speech.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
@@ -62,8 +59,8 @@ up stops, start it again: it continues where it stopped.
 ## Use
 
 1. Click **New project**. Name it and choose English or Japanese.
-2. Click **Add recordings** or drag audio files onto the window. Each file
-   should hold one speaker and only that speaker's speech.
+2. Click **Add recordings** or drag audio files (WAV, MP3, FLAC, OGG or M4A)
+   onto the window.
 3. Click **Start**.
 4. When it finishes, click **Open CSV** to see the measures.
 
@@ -100,10 +97,6 @@ Clausa's results are produced automatically and may contain errors. Check
 them before you report them, for example by opening the annotation files in
 Praat. You are responsible for the results you report.
 
-The annotation files give the start and end time of each word, pause,
-disfluency and clause that Clausa found. You can also compute your own
-measures from them.
-
 In Japanese, a number written in digits is read one digit at a time. For
 example, 25 (にじゅうご, 4 morae) counts as 2 morae. This changes the measures
 that use morae in recordings with numbers.
@@ -121,10 +114,38 @@ minutes of audio in all.
 | Windows without its graphics card | 4.5 min | |
 | Linux: Ryzen 9 9950X, 128 GB, RTX 5090, command line | 35 s | 1.5 min |
 
-## Notes
+## FAQ
 
-Analyse all recordings of one study on the same computer. Different computers
-can give slightly different results.
+**What does Clausa give me?**
+The main output is a TextGrid file for each recording, with the start and end
+time of each word, pause, disfluency and clause. From these, Clausa's default
+calculator computes the nine [measures](#measures) into `uf_measures.csv`. For
+other measures, compute them from the TextGrid files, which are in each
+session's `clauses` folder.
+
+**Should I prepare my recordings first?**
+- Cut them to the part you want to analyse. The measures run from the first
+  word to the last, so silence at the start and end does not count.
+- Loudness normalisation is not needed. Avoid clipping when you record.
+- Noise reduction is usually not needed. Strong noise reduction can remove
+  quiet speech and filled pauses, which changes the pause measures. If you use
+  it, use the same settings for every recording.
+
+**Can I analyse a conversation or an interview?**
+Yes. Clausa transcribes and annotates all the speech in a recording, but it
+does not yet tell speakers apart (speaker diarization is planned). With more
+than one speaker, the measures mix the speakers, so use the TextGrid files.
+
+**What counts as a pause?**
+A silence of 0.25 s or longer between words.
+
+**Can Clausa recompute the measures after I correct a TextGrid?**
+Not yet. The measure calculation will become a separate step in a later
+version.
+
+**Why are my results different on another computer?**
+Different computers can give slightly different transcripts. Analyse all
+recordings of one study on the same computer.
 
 ## Languages
 

@@ -62,8 +62,8 @@ On Windows, write `python clausa` instead of `./clausa`.
 
 On a Mac, double-clicking `Start Clausa.command` starts the browser interface.
 
-The whole file is analysed. Cut out everything that is not the speaker's
-speech, or give the speaker's span:
+The whole file is analysed. To analyse only part of it, cut it, or give the
+span:
 
 - `--window START END`: seconds, the same for every file.
 - `--windows CSV`: columns `file_id,start,end`, where `file_id` is the file

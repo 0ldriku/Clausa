@@ -2,7 +2,7 @@
 
 [English](README.md) · [日本語](README.ja.md) · 简体中文
 
-Clausa 把口语录音转换为基于 clause 的 utterance fluency 指标。它先转写语音，对齐每个单词，再把语音切分为 clause 并找出 disfluency，包括转写遗漏的 filled pause。然后为每个录音给出九项 speed 和 pause 指标，其中包括 clause 内和 clause 末的 pause。指标输出为表格文件，标注输出为 TextGrid 文件。Clausa 为第二语言口语而设计，也适用于第一语言口语，目前支持英语和日语。
+Clausa 自动完成 utterance fluency 研究中的标注工作。输入口语录音，它会把标注输出为 TextGrid 文件（words、pauses、disfluencies、clauses）。它支持英语和日语，适用于第二语言和第一语言口语。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
@@ -53,7 +53,7 @@ Clausa 把口语录音转换为基于 clause 的 utterance fluency 指标。它�
 ## 使用
 
 1. 点击**新建项目**。为项目命名，并选择英语或日语。
-2. 点击**添加录音**，或把音频文件拖到窗口上。每个文件应只包含一位说话人的语音。
+2. 点击**添加录音**，或把音频文件（WAV、MP3、FLAC、OGG 或 M4A）拖到窗口上。
 3. 点击**开始**。
 4. 完成后，点击**打开 CSV** 查看指标。
 
@@ -85,8 +85,6 @@ Clausa 把口语录音转换为基于 clause 的 utterance fluency 指标。它�
 
 Clausa 的结果由程序自动生成，可能有错误。报告之前请先检查，例如在 Praat 中打开标注文件。你对自己报告的结果负责。
 
-标注文件给出 Clausa 找到的每个单词、pause、disfluency 和 clause 的起止时间。你也可以用它们计算自己的指标。
-
 在日语中，用数字写的数会被逐位读出。例如，25（にじゅうご，4 个 mora）只算作 2 个 mora。这会影响含数字的录音中使用 mora 的指标。
 
 ## 速度
@@ -100,9 +98,27 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 | Windows，不使用显卡 | 4.5 分钟 | |
 | Linux：Ryzen 9 9950X，128 GB，RTX 5090，命令行 | 35 秒 | 1.5 分钟 |
 
-## 注意
+## 常见问题
 
-一项研究的所有录音请在同一台电脑上分析。不同的电脑可能给出略有差异的结果。
+**Clausa 输出什么？**
+主要输出是每个录音的 TextGrid 文件，给出每个单词、pause、disfluency 和 clause 的起止时间。Clausa 默认的计算程序据此计算九项[指标](#指标)，写入 `uf_measures.csv`。其他指标请根据 TextGrid 文件自行计算，这些文件位于每轮分析的 `clauses` 文件夹中。
+
+**录音需要预先处理吗？**
+- 请只保留要分析的部分。指标从第一个单词算到最后一个单词，开头和结尾的静音不计入。
+- 不需要音量归一化。录音时请避免削波（爆音）。
+- 通常不需要降噪。较强的降噪可能去掉音量较低的语音和 filled pause，从而改变 pause 指标。如果使用，请对所有录音采用相同的设置。
+
+**能分析对话或访谈吗？**
+可以。Clausa 会转写并标注录音中的全部语音，但目前还不能区分说话人（说话人分离功能已在计划中）。有多位说话人时，指标会混合所有人的语音，请改用 TextGrid 文件。
+
+**什么算作 pause？**
+单词之间 0.25 秒及以上的静音。
+
+**修改 TextGrid 后能重新计算指标吗？**
+目前不能。我们计划在以后的版本中把指标计算作为独立的步骤。
+
+**为什么在另一台电脑上结果不同？**
+不同的电脑可能给出略有差异的转写。一项研究的所有录音请在同一台电脑上分析。
 
 ## 语言
 

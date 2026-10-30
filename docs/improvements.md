@@ -69,5 +69,5 @@ Each change was measured on its own, against a rerun of the article's pipeline.
 | General rules replace rules written for the evaluation recordings | both | no measurable change |
 | A bug fix in splitting Japanese run-on clauses | Japanese | RQ1 κ +.003 |
 
-Clausa no longer removes interview phrases from Japanese recordings. Each
-recording should hold only the speaker's speech.
+Clausa no longer removes interview phrases from Japanese recordings. Cut out
+the speech you do not want analysed, such as the interviewer's.

@@ -121,7 +121,7 @@ window.STRINGS = {
     "row.remove_title": "Remove from the project",
 
     "empty.title": "Drop recordings here",
-    "empty.formats": "WAV, MP3, FLAC, OGG or M4A · one speaker per file",
+    "empty.formats": "WAV, MP3, FLAC, OGG or M4A",
     "empty.choose": "Choose files…",
     "drop.more": "Drop more recordings here, or {link}",
     "drop.more_link": "choose files",
@@ -434,7 +434,7 @@ window.STRINGS = {
     "row.remove_title": "プロジェクトから削除",
 
     "empty.title": "ここに録音をドロップ",
-    "empty.formats": "WAV、MP3、FLAC、OGG、M4A · 1ファイルに話者1人",
+    "empty.formats": "WAV、MP3、FLAC、OGG、M4A",
     "empty.choose": "ファイルを選択…",
     "drop.more": "録音をここにドロップするか、{link}",
     "drop.more_link": "ファイルを選択",
@@ -747,7 +747,7 @@ window.STRINGS = {
     "row.remove_title": "从项目中移除",
 
     "empty.title": "将录音拖放到这里",
-    "empty.formats": "WAV、MP3、FLAC、OGG 或 M4A · 每个文件一位说话人",
+    "empty.formats": "WAV、MP3、FLAC、OGG 或 M4A",
     "empty.choose": "选择文件…",
     "drop.more": "将更多录音拖放到这里，或{link}",
     "drop.more_link": "选择文件",
