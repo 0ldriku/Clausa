@@ -8,6 +8,11 @@ recording, including pauses in the middle and at the end of clauses. The
 measures come in a spreadsheet, and the annotations in TextGrid files you can
 open in Praat. Clausa works with English and Japanese for now.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
+  <img alt="A recording goes into Clausa, which gives a TextGrid with words, pauses, disfluency and clauses tiers, and uf_measures.csv with nine measures" src="docs/images/overview-light.svg">
+</picture>
+
 The name comes from *clause* and *pausa*, Latin for pause.
 
 ## Download
@@ -93,7 +98,7 @@ disfluency and clause that Clausa found. You can also compute your own
 measures from them.
 
 In Japanese, a number written in digits is read one digit at a time. For
-example, 25 (にじゅうご, 5 morae) counts as 2 morae. This changes the measures
+example, 25 (にじゅうご, 4 morae) counts as 2 morae. This changes the measures
 that use morae in recordings with numbers.
 
 ## Speed
