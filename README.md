@@ -136,9 +136,8 @@ the TextGrid files, in each session's `clauses` folder.
 Yes. Clausa transcribes and annotates all the speech, but does not tell
 speakers apart. With more than one speaker the measures mix them: analyse a
 part where only one person speaks ([part of a recording](#can-i-analyse-only-part-of-a-recording)),
-or use the TextGrid files. Telling speakers apart (speaker diarization) is
-complicated: besides finding the speakers, the measures would need rules for
-the other speaker's turns. It may come in a later project.
+or use the TextGrid files. Speaker diarization is difficult to implement. It
+may come in another project.
 
 ### What counts as a pause?
 
