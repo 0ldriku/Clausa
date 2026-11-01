@@ -65,14 +65,16 @@ Clausa 是研究工具，目的只有一个：尽可能准确地标注口语录�
 
 ## 指标
 
+指标在英语中按 syllable 计算，在日语中按 mora 计算。
+
 | 指标 | 含义 |
 |---|---|
-| AR | 发声时间内每秒的 syllable 数 |
-| SR | 每秒的 syllable 数，含 pause |
-| MLR | 两次 pause 之间的 syllable 数 |
-| MCPR | 每 syllable 的 clause 内 pause 数 |
-| ECPR | 每 syllable 的 clause 末 pause 数 |
-| PR | 每 syllable 的 pause 总数 |
+| AR | 发声时间内每秒的 syllable/mora 数 |
+| SR | 每秒的 syllable/mora 数，含 pause |
+| MLR | 两次 pause 之间的 syllable/mora 数 |
+| MCPR | 每 syllable/mora 的 clause 内 pause 数 |
+| ECPR | 每 syllable/mora 的 clause 末 pause 数 |
+| PR | 每 syllable/mora 的 pause 总数 |
 | MCPD | clause 内 pause 的平均时长，单位为秒 |
 | ECPD | clause 末 pause 的平均时长，单位为秒 |
 | MPD | 全部 pause 的平均时长，单位为秒 |

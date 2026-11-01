@@ -64,14 +64,16 @@ Clausaは研究用のツールで、目的は1つです。発話の録音をで�
 
 ## 指標
 
+指標は、英語ではsyllable単位、日本語ではmora単位で計算します。
+
 | 指標 | 意味 |
 |---|---|
-| AR | 発話時間1秒あたりのsyllable数 |
-| SR | pauseを含めた1秒あたりのsyllable数 |
-| MLR | pauseとpauseの間のsyllable数 |
-| MCPR | clause内のpauseの数（syllableあたり） |
-| ECPR | clause末のpauseの数（syllableあたり） |
-| PR | すべてのpauseの数（syllableあたり） |
+| AR | 発話時間1秒あたりのsyllable/mora数 |
+| SR | pauseを含めた1秒あたりのsyllable/mora数 |
+| MLR | pauseとpauseの間のsyllable/mora数 |
+| MCPR | clause内のpauseの数（syllable/moraあたり） |
+| ECPR | clause末のpauseの数（syllable/moraあたり） |
+| PR | すべてのpauseの数（syllable/moraあたり） |
 | MCPD | clause内のpauseの平均長（秒） |
 | ECPD | clause末のpauseの平均長（秒） |
 | MPD | すべてのpauseの平均長（秒） |

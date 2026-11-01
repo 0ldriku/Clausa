@@ -77,14 +77,16 @@ folder in **Settings** › **Change folder…**.
 
 ## Measures
 
+The measures count syllables in English and morae in Japanese.
+
 | Measure | Meaning |
 |---|---|
-| AR | syllables per second of speaking time |
-| SR | syllables per second, pauses included |
-| MLR | syllables between two pauses |
-| MCPR | pauses inside clauses, per syllable |
-| ECPR | pauses at the end of clauses, per syllable |
-| PR | all pauses, per syllable |
+| AR | syllables/morae per second of speaking time |
+| SR | syllables/morae per second, pauses included |
+| MLR | syllables/morae between two pauses |
+| MCPR | pauses inside clauses, per syllable/mora |
+| ECPR | pauses at the end of clauses, per syllable/mora |
+| PR | all pauses, per syllable/mora |
 | MCPD | mean length of pauses inside clauses, in seconds |
 | ECPD | mean length of pauses at the end of clauses, in seconds |
 | MPD | mean length of all pauses, in seconds |
