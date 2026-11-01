@@ -15,8 +15,8 @@ Clausaは研究用のツールで、目的は1つです。発話の録音をで�
 
 ## ダウンロード
 
-- Mac: [Clausa-1.0.3-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-macos-arm64.zip)
-- Windows: [Clausa-1.0.3-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-windows-x64.zip)
+- Mac: [Clausa-1.0.4-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-macos-arm64.zip)
+- Windows: [Clausa-1.0.4-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-windows-x64.zip)
 - Linux: [コマンドライン](docs/command-line.md)（英語）
 
 [各バージョンの変更点](CHANGELOG.md)（英語）
@@ -139,7 +139,7 @@ Apple siliconを搭載したMacでは、80分までの録音で検証し、問�
 
 ### 録音の一部だけを分析できますか？
 
-はい。**アノテーション**で新しい録音を選び、**分析する範囲**で**一部**を選びます。波形の両端をドラッグするか時刻を入力し、**範囲を再生**で確認します。範囲外の単語は、Clause TextGridと指標から除外されます（単語TextGridにはすべて残ります）。同じ範囲を他の新規録音すべてに使うことも、録音ごとの範囲をCSV（`file_id,start,end`、秒単位）からプロジェクトの**···**メニューの**CSVから範囲を読み込む**で設定することもできます。コマンドラインでは`--window 12.5 140`、またはこのCSVを`--windows`で指定します（[コマンドライン](docs/command-line.md)、英語）。
+はい。**アノテーション**で新しい録音を選び、**分析する範囲**で**一部**を選びます。波形の両端をドラッグするか時刻を入力し、**範囲を再生**で確認します。範囲外の単語は、Clause TextGridと指標から除外されます（単語TextGridにはすべて残ります）。アノテーション後は範囲が固定されます。別の範囲を分析するには、録音をプロジェクトから削除して追加し直してください。同じ範囲を他の新規録音すべてに使うことも、録音ごとの範囲をCSV（`file_id,start,end`、秒単位）からプロジェクトの**···**メニューの**CSVから範囲を読み込む**で設定することもできます。コマンドラインでは`--window 12.5 140`、またはこのCSVを`--windows`で指定します（[コマンドライン](docs/command-line.md)、英語）。
 
 ### TextGridを修正した後、指標をもう一度計算するには？
 

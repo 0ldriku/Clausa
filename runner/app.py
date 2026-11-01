@@ -1771,12 +1771,15 @@ class Api:
     # ---------- part to analyse ----------
 
     def _part_rec(self, rec_id) -> tuple[Project | None, Recording | None]:
-        """The project shown, and its recording rec_id if its part can change now (not in the running session)."""
+        """The project shown, and its recording rec_id if its part can change now: not in the running
+        session, and not annotated (a done recording's part is the one its TextGrids come from)."""
         kind, p = self._view()
         r = p.find(str(rec_id)) if kind == "project" else None
         run = self._run
         if r is not None and run is not None and run.project is p and run.recs.get(r.id) is r \
-                and run.status in ("running", "stopping"):
+                and run.status in ("running", "stopping") and r.status == "running":
+            r = None
+        if r is not None and r.status == "done":
             r = None
         return (p if kind == "project" else None), r
 
@@ -1800,6 +1803,9 @@ class Api:
         with self._lock:
             p, r = self._part_rec(rec_id)
             if r is None:
+                found = p.find(str(rec_id)) if p is not None else None
+                if found is not None and found.status == "done":
+                    return not_done(msg("part.locked", "Its part is locked: it was annotated with this part"))
                 return not_done(msg("part.busy", "Its part cannot change while it is being analysed"))
             try:
                 part = None if start is None and end is None else self._check_part(r, start, end)
@@ -1812,10 +1818,11 @@ class Api:
         return {"ok": True, "part": part}
 
     def use_part_for_new(self, rec_id: str) -> dict:
-        """Give this recording's part to the project's other New recordings; one shorter than the part's
-        end keeps its own. {"ok": True, "n": recordings given it, "skipped": too short}."""
+        """Give this recording's part (an annotated one's too) to the project's other New recordings; one
+        shorter than the part's end keeps its own. {"ok": True, "n": recordings given it, "skipped": too short}."""
         with self._lock:
-            p, r = self._part_rec(rec_id)
+            kind, p = self._view()
+            r = p.find(str(rec_id)) if kind == "project" else None
             if r is None or not r.part:
                 return {"ok": False, "n": 0, "skipped": 0}
             n = skipped = 0
@@ -1886,7 +1893,8 @@ class Api:
             if n:
                 self._save_project(p)
         self._log.write(f"Parts from {path}: {n} set" + (f", {skipped} rows not used (unknown file, a recording "
-                                                          "being analysed, or times outside it)" if skipped else ""))
+                                                          "annotated or being analysed, or times outside it)"
+                                                          if skipped else ""))
         self._note(msg("notice.parts_imported", f"Parts from {path.name}: {n} set", file=path.name, n=n)
                    if not skipped else
                    msg("notice.parts_imported_skipped", f"Parts from {path.name}: {n} set, {skipped} rows not used "

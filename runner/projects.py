@@ -357,7 +357,8 @@ class Recording:
     error_params: dict | None = None  # params, which the window says in its language; none from Clausa 1.0.1
     compute: dict | None = None  # the last Compute of its measures (Clausa 1.0.3): status (done or failed), at,
     # session and stamp (the TextGrid's [mtime_ns, size] then, None if missing), error, error_code, error_params
-    part: list | None = None  # [start, end] in seconds to analyse (Clausa 1.0.3); None: the whole recording
+    part: list | None = None  # [start, end] in seconds to analyse (Clausa 1.0.3); None: the whole recording;
+    # locked once the recording is annotated (status done): then always part_used
     part_used: list | None = None  # the part its last session analysed (None: the whole recording)
     # not saved:
     progress: float = 0.0
@@ -393,6 +394,8 @@ class Recording:
         if not isinstance(rec.compute, dict):
             rec.compute = None
         rec.part, rec.part_used = valid_part(rec.part), valid_part(rec.part_used)
+        if rec.status == "done":  # an annotated recording's part is the one its analysis used (Clausa 1.0.4)
+            rec.part = rec.part_used
         return rec
 
     def saved_state(self) -> dict:

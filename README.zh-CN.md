@@ -15,8 +15,8 @@ Clausa 是研究工具，目的只有一个：尽可能准确地标注口语录�
 
 ## 下载
 
-- Mac：[Clausa-1.0.3-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-macos-arm64.zip)
-- Windows：[Clausa-1.0.3-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-windows-x64.zip)
+- Mac：[Clausa-1.0.4-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-macos-arm64.zip)
+- Windows：[Clausa-1.0.4-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-windows-x64.zip)
 - Linux：[命令行](docs/command-line.md)（英文）
 
 [各版本的变更](CHANGELOG.md)（英文）
@@ -140,7 +140,7 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 
 ### 能只分析录音的一部分吗？
 
-可以。在**标注**中选择一个新录音，在**分析范围**下选择**部分**：在波形上拖动两端或输入时间，并用**播放该范围**检查。范围以外的单词不计入 Clause TextGrid 和指标（单词 TextGrid 保留全部单词）。同一范围可以用于所有新录音；也可以通过项目 **···** 菜单中的**从 CSV 导入范围**，从 CSV（`file_id,start,end`，单位为秒）为每个录音分别设置。在命令行中：`--window 12.5 140`，或用 `--windows` 指定这样的 CSV（[命令行](docs/command-line.md)，英文）。
+可以。在**标注**中选择一个新录音，在**分析范围**下选择**部分**：在波形上拖动两端或输入时间，并用**播放该范围**检查。范围以外的单词不计入 Clause TextGrid 和指标（单词 TextGrid 保留全部单词）。录音标注后，范围即被锁定；要分析其他范围，请将录音从项目中移除后重新添加。同一范围可以用于所有新录音；也可以通过项目 **···** 菜单中的**从 CSV 导入范围**，从 CSV（`file_id,start,end`，单位为秒）为每个录音分别设置。在命令行中：`--window 12.5 140`，或用 `--windows` 指定这样的 CSV（[命令行](docs/command-line.md)，英文）。
 
 ### 修改 TextGrid 后，如何重新计算指标？
 

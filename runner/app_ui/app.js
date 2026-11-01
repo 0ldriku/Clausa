@@ -331,7 +331,7 @@
       if (params.get('menu') === 'project') $('projMenuBtn').click();
       if (params.get('menu') === 'settings') $('settingsBtn').click();
       if (params.get('menu') === 'csv') $('csvBtn').click();
-      if (params.get('part') === '1' && S.sel !== null) api.set_part(S.sel, 12.5, 110).then(refresh);
+      if (params.get('part') === '1' && S.sel !== null) api.preview_part(S.sel, 12.5, 110).then(refresh);
     });
   }
 
@@ -845,26 +845,34 @@
     // ids are file names and repeat across projects: the editor and its waveform go by both
     var id = String(r.id), key = (projOf(st) || {}).id + '\u0000' + id + '\u0000' + (r.added || '');
     var w0 = WAVES[key], dur = r.duration_s || (w0 && typeof w0 === 'object' ? w0.duration : 0) || 0;
-    if (PART.key !== key) {  // another recording: its saved part
-      if (PART.playing) stopPart();
+    // An annotated recording's part is locked: it shows the part its TextGrids come from (Clausa 1.0.4).
+    var locked = r.status === 'done';
+    if (PART.key !== key || PART.locked !== locked) {  // another recording, or this one annotated: its saved part
+      if (PART.playing && PART.key !== key) stopPart();
       clearTimeout(PART.keyTimer);
-      PART = { id: id, key: key, mode: r.part ? 'part' : 'whole', from: r.part ? r.part[0] : 0, to: r.part ? r.part[1] : dur, dur: dur, drag: null, err: '', saved: r.part, playing: null, pending: 0 };
+      PART = { id: id, key: key, locked: locked, mode: r.part ? 'part' : 'whole', from: r.part ? r.part[0] : 0, to: r.part ? r.part[1] : dur, dur: dur, drag: null, err: '', saved: r.part, playing: PART.key === key ? PART.playing : null, pending: 0 };
     } else if (!samePart(r.part, PART.saved) && !PART.drag && !PART.pending && !partFocused()) {  // changed elsewhere (Use this part for ..., an import)
       PART.saved = r.part;
       if (r.part) { PART.mode = 'part'; PART.from = r.part[0]; PART.to = r.part[1]; }
     }
     PART.dur = dur;
+    box.classList.toggle('locked', locked);
     Array.prototype.forEach.call(box.querySelectorAll('[data-part]'), function (b) {
       var on = b.getAttribute('data-part') === PART.mode;
       if (b.getAttribute('aria-checked') !== String(on)) b.setAttribute('aria-checked', String(on));
+      setDisabled(b, locked);
     });
+    ['partFrom', 'partTo'].forEach(function (f) { $(f).readOnly = locked; $(f).setAttribute('aria-readonly', String(locked)); });
+    ['partStartH', 'partEndH'].forEach(function (h) { $(h).tabIndex = locked ? -1 : 0; $(h).setAttribute('aria-disabled', String(locked)); });
     $('partBody').hidden = PART.mode !== 'part';
     if (PART.mode === 'part') {
       if (WAVES[key] === undefined) loadWave(key, id);
       drawPart();
     }
-    var changed = r.status === 'done' && !samePart(r.part, r.part_used);
-    var note = changed ? t('part.changed', { used: r.part_used ? fmtPart(r.part_used) : t('part.changed_whole') }) : PART.mode === 'part' ? t('part.note') : '';
+    var earlier = r.status === 'failed' && r.last_session && !samePart(r.part, r.part_used);
+    var note = locked ? t('part.locked_note')
+      : earlier ? t('part.last_used', { used: r.part_used ? fmtPart(r.part_used) : t('part.whole_lc') })
+      : PART.mode === 'part' ? t('part.note') : '';
     $('partNote').hidden = !note;
     setText($('partNote'), note);
     var others = recsOf(st).filter(function (o) { return String(o.id) !== id && o.status === 'new'; }).length;
@@ -884,7 +892,7 @@
     var wave = $('partWave'), w = WAVES[PART.key], width = wave.clientWidth || 270, height = wave.clientHeight || 64;
     var ok = w && typeof w === 'object', dur = PART.dur || (ok ? w.duration : 0) || 1;
     wave.classList.toggle('no-wave', !ok);
-    setText($('partWaveMsg'), ok ? '' : w === 'failed' ? t('part.no_wave') : t('part.loading'));
+    setText($('partWaveMsg'), ok ? '' : w === 'failed' ? t(PART.locked ? 'part.no_wave_locked' : 'part.no_wave') : t('part.loading'));
     var x0 = PART.from / dur * width, x1 = PART.to / dur * width;
     if (ok && (wave._key !== PART.key + ':' + width)) {  // the bars, once per recording and width
       var n = Math.max(1, Math.floor(width / 2)), pk = w.peaks, bars = [];
@@ -935,7 +943,15 @@
     sendPart(id, part[0], part[1]).then(function (res) {
       if (PART.key !== key) return;
       if (res && res.ok) { PART.saved = res.part; PART.err = ''; if (res.part) { PART.from = res.part[0]; PART.to = res.part[1]; } }
-      else if (res) { PART.err = msgText(res); }
+      else if (res) {
+        PART.err = msgText(res);
+        if (res.key === 'part.busy' || res.key === 'part.locked') {  // not the user's times: the part as saved
+          PART.mode = PART.saved ? 'part' : 'whole';
+          PART.from = PART.saved ? PART.saved[0] : 0;
+          PART.to = PART.saved ? PART.saved[1] : PART.dur;
+          render();
+        }
+      }
       drawPart();
     });
   }
@@ -985,7 +1001,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('#insPart [data-part]'), function (b) {
       b.addEventListener('click', function () {
         var mode = b.getAttribute('data-part');
-        if (mode === PART.mode) return;
+        if (mode === PART.mode || PART.locked) return;
         clearTimeout(PART.keyTimer);
         PART.mode = mode;
         PART.err = '';
@@ -996,7 +1012,7 @@
     });
     var wave = $('partWave');
     wave.addEventListener('pointerdown', function (e) {
-      if (!WAVES[PART.key] || typeof WAVES[PART.key] !== 'object') return;
+      if (PART.locked || !WAVES[PART.key] || typeof WAVES[PART.key] !== 'object') return;
       var v = timeAt(e);
       PART.drag = Math.abs(v - PART.from) <= Math.abs(v - PART.to) ? 'start' : 'end';
       try { wave.setPointerCapture(e.pointerId); } catch (err) { /* a pointer that is gone already */ }
@@ -1012,7 +1028,7 @@
     [['partStartH', 'start'], ['partEndH', 'end']].forEach(function (h) {
       $(h[0]).addEventListener('keydown', function (e) {
         var step = e.shiftKey ? 1 : 0.1, keys = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step };
-        if (!(e.key in keys)) return;
+        if (!(e.key in keys) || PART.locked) return;
         e.preventDefault();
         setEdge(h[1], (h[1] === 'start' ? PART.from : PART.to) + keys[e.key]);
         drawPart();
@@ -1024,6 +1040,7 @@
     [['partFrom', 'start'], ['partTo', 'end']].forEach(function (f) {
       var input = $(f[0]);
       function commit() {
+        if (PART.locked) { drawPart(); return; }
         var v = parseTime(input.value);
         if (v === null) { PART.err = t('part.bad_time'); input.setAttribute('aria-invalid', 'true'); drawPart(); return; }
         input.removeAttribute('aria-invalid');
@@ -1617,7 +1634,7 @@
 
     var X = {}, clock = 14 * 3600 + 5 * 60 + 2, sim = null, stopTimer = null, noticeN = 0;
     var D = {
-      app: { version: '1.0.3', version_full: '1.0.3', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX', device_key: preview ? 'preview' : 'mlx',
+      app: { version: '1.0.4', version_full: '1.0.4', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX', device_key: preview ? 'preview' : 'mlx',
              trash: 'Trash', trash_key: 'trash', ui_language: UI, ui_language_setting: params.get('ui') ? UI : null,
              appearance: ['light', 'dark'].indexOf(params.get('theme')) >= 0 ? params.get('theme') : 'system',
              mode: params.get('mode') === 'compute' ? 'compute' : 'annotate' },
@@ -2009,6 +2026,7 @@
       set_part: function (id, start, end) {
         var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0];
         if (!r) return Promise.resolve({ ok: false });
+        if (r.status === 'done') return Promise.resolve({ ok: false, key: 'part.locked', params: {}, text: 'Its part is locked: it was annotated with this part' });
         if (start == null && end == null) { r.part = null; return Promise.resolve({ ok: true, part: null }); }
         end = Math.min(end, r.duration_s);
         var whole = fmtTime1(r.duration_s);
@@ -2025,6 +2043,11 @@
         return Promise.resolve({ ok: true, n: n, skipped: 0 });
       },
       import_parts: function () { return Promise.resolve({ ok: false }); },
+      preview_part: function (id, start, end) {  // the preview's ?part=1: a part on any recording, as if analysed with it
+        var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0];
+        if (r) { r.part = [start, end]; if (r.status === 'done') r.part_used = [start, end]; }
+        return Promise.resolve(true);
+      },
       play_part: function (id, start, end) { return Promise.resolve({ ok: true, length: Math.min(end - start, 600) }); },
       stop_playing: function () { return Promise.resolve(true); },
       open_folder: function () { return Promise.resolve(true); },

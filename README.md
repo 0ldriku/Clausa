@@ -20,8 +20,8 @@ The name comes from *clause* and *pausa*, Latin for pause.
 
 ## Download
 
-- Mac: [Clausa-1.0.3-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-macos-arm64.zip)
-- Windows: [Clausa-1.0.3-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-windows-x64.zip)
+- Mac: [Clausa-1.0.4-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-macos-arm64.zip)
+- Windows: [Clausa-1.0.4-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.4/Clausa-1.0.4-windows-x64.zip)
 - Linux: the [command line](docs/command-line.md)
 
 [What changed in each version](CHANGELOG.md)
@@ -198,7 +198,9 @@ not tested with long recordings.
 Yes. In **Annotate**, select a new recording and choose **Part** under **Part
 to analyse**: drag the edges on its waveform or type the times, and **Play the
 part** to check them. Words outside the part are left out of the clauses
-TextGrid and the measures (the words TextGrid keeps them all). One part can go to all new recordings, or each can get its own
+TextGrid and the measures (the words TextGrid keeps them all). Once the
+recording is annotated, its part is locked; to analyse another part, remove
+the recording and add it again. One part can go to all new recordings, or each can get its own
 from a CSV (`file_id,start,end`, in seconds) through **Import parts from a
 CSV** in the project's **···** menu. On the command line: `--window 12.5 140`,
 or `--windows` with such a CSV ([Command line](docs/command-line.md)).

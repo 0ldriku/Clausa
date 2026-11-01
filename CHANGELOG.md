@@ -3,6 +3,17 @@
 Each version of Clausa, newest first. **Measures** says whether a recording
 gives other numbers than in the version before.
 
+## 1.0.4 (1 November 2026)
+
+- **Part to analyse** is locked once a recording is annotated: its details
+  show the part its TextGrids come from, and Play plays it, but it can no
+  longer change (1.0.3 let it change afterwards, so the row could show another
+  part than the TextGrids had). A project from 1.0.3 shows each annotated
+  recording's analysed part again. To analyse another part, remove the
+  recording and add it again.
+
+**Measures:** the same.
+
 ## 1.0.3 (1 November 2026)
 
 - Two modes in the sidebar, under **New project**. **Annotate** runs the

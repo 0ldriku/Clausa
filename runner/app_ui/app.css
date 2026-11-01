@@ -381,6 +381,12 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 .wave .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
 .wave .wave-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12px; color: var(--muted); font-size: var(--fs-s); text-align: center; pointer-events: none; }
 .wave.no-wave .sel, .wave.no-wave .handle { display: none; }
+/* an annotated recording's part: shown, played, not changed */
+.ins-part.locked .wave { cursor: default; }
+.ins-part.locked .wave .handle, .ins-part.locked .wave-tools .hint { display: none; }
+.ins-part.locked .segmented button[aria-disabled="true"] { cursor: default; }
+.ins-part.locked .segmented button[aria-disabled="true"]:not([aria-checked="true"]) { color: var(--disabled); }
+.ins-part.locked .part-times .input { color: var(--muted); }
 .wave-axis { display: flex; justify-content: space-between; margin-top: -4px; font-family: var(--mono); font-size: var(--fs-s); color: var(--muted); }
 .wave-tools { display: flex; align-items: center; gap: 10px; }
 .wave-tools .small { display: inline-flex; align-items: center; gap: 6px; height: 30px; }

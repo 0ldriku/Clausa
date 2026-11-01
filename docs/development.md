@@ -317,7 +317,8 @@ pywebview. The page calls the Python class `Api`.
   and size then); a newer session or a changed TextGrid shows it as Ready
   again. One session or Compute at a time.
 - A recording's part to analyse (`part` in `project.json`; `part_used`: the
-  part of its last session) goes to the session's `parts.csv`, which
+  part of its last session; once it is done, `part` is `part_used` and locked)
+  goes to the session's `parts.csv`, which
   `run_pipeline` takes as `windows_csv`. The waveform and Play come from
   `runner/audio.py` (PyAV; played by `afplay` or `winsound`, since the webview
   cannot read the project's files).
