@@ -14,6 +14,8 @@ Each stage is a script in pipeline/<lang>/ or pipeline/shared/ run in its conda 
              islands for Japanese (shared/placeholder_islands.py; in
              paper mode the Stage 4 islands only, both languages: MODES)
   6 uf       nine utterance-fluency measures                -> uf/uf_measures.csv
+             and their words, pauses and clauses (shared/uf_tables.py; not in paper mode)
+                                                            -> uf/uf_words.csv, uf_pauses.csv, uf_clauses.csv
 
 Stage 4 needs the filler classifier weights (models/filler_classifier/, not
 distributed). Without them it is skipped (the default English measures do not
@@ -33,12 +35,15 @@ another thread (run_pipeline's stop).
 from __future__ import annotations
 
 import codecs
+import contextlib
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from dataclasses import dataclass
@@ -95,6 +100,7 @@ class Mode:
     classifier_islands: frozenset[str]  # languages whose islands keep the Stage 4 classifier's islands
     alignment_check: bool               # report recordings MFA aligned no word of (_alignment_check)
     mlx: bool                           # Stage 1 may run through MLX (the CLI refuses --device mlx otherwise)
+    tables: bool                        # the last stage writes uf_words.csv, uf_pauses.csv, uf_clauses.csv too
     env_aliases: tuple[tuple[str, str], ...] = ()  # (setting, name the stage scripts read it by) pairs
 
 
@@ -111,9 +117,9 @@ PAPER_ENV_ALIASES = (
 # spans instead of the classifier's islands (docs/improvements.md).
 MODES = {
     False: Mode(paths.PIPELINE_DIR, placeholder_spans=frozenset({"en", "ja"}),
-                classifier_islands=frozenset({"ja"}), alignment_check=True, mlx=True),
+                classifier_islands=frozenset({"ja"}), alignment_check=True, mlx=True, tables=True),
     True: Mode(paths.PAPER_PIPELINE_DIR, placeholder_spans=frozenset(),
-               classifier_islands=frozenset({"en", "ja"}), alignment_check=False, mlx=False,
+               classifier_islands=frozenset({"en", "ja"}), alignment_check=False, mlx=False, tables=False,
                env_aliases=PAPER_ENV_ALIASES),
 }
 
@@ -362,6 +368,40 @@ def _end(proc: subprocess.Popen, group: bool) -> None:
     proc.wait()
 
 
+STALE_TEMP_S = 24 * 3600  # a temporary folder of Stage 2 this old was left by a run that ended
+
+
+@contextlib.contextmanager
+def _alignment_temp(env: dict[str, str]):
+    """Stage 2's environment with a temporary folder of its own, removed when its command ends.
+
+    MFA's working folders and its copies of the MFA root go to the temp folder
+    (pipeline/*/mfa_from_pre_mfa_json.py, asr_mfa_*.py), 0.1-0.2 GB per alignment
+    worker. The scripts remove them, but not after a Stop on Windows, which ends
+    them at once (_end, taskkill). The folder is in the temp folder, whose path is
+    short (Windows paths stop at 260 characters: mfa_from_pre_mfa_json.py). Ones a
+    day old go first: the runner itself was ended, or an earlier version left them.
+    """
+    base = Path(tempfile.gettempdir())
+    isjunction = getattr(os.path, "isjunction", lambda path: False)
+    for old in [*base.glob("clausa_s2_*"), *base.glob("clausa_mfa_*")]:
+        try:
+            if old.is_dir() and not old.is_symlink() and not isjunction(old) \
+                    and time.time() - old.stat().st_mtime > STALE_TEMP_S:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    folder = Path(tempfile.mkdtemp(prefix="clausa_s2_", dir=base))
+    try:
+        yield {**env, "TMP": str(folder), "TEMP": str(folder), "TMPDIR": str(folder)}
+    finally:
+        for _ in range(20):  # files of processes taskkill ended can stay locked for a moment
+            shutil.rmtree(folder, ignore_errors=True)
+            if not folder.exists():
+                break
+            time.sleep(0.5)
+
+
 def _run_command(cmd: list[str], env: dict[str, str], *, on_line: Callable[[str], None] | None = None,
                  stop: threading.Event | None = None) -> None:
     """Run one stage command like subprocess.run(check=True), output copied through.
@@ -561,7 +601,8 @@ def run_pipeline(
         "caf": [_command(
             lang.uf_env, scripts / lang.uf_script, clauses_out,
             "--candidate-dir", islands_out / "per_file",
-            "--file-list-json", file_list, "--file-list-key", "files", "--output", uf_csv)],
+            "--file-list-json", file_list, "--file-list-key", "files", "--output", uf_csv,
+            *(["--tables-dir", uf_csv.parent] if mode.tables else []))],
     }
 
     stages = ([DECODE] if decode else []) + STAGES
@@ -605,7 +646,11 @@ def run_pipeline(
             stage_started = time.monotonic()
             lines = _FileLines(key, files, file_event)
             for env_name, cmd in commands[key]:
-                _run_command(cmd, stage_envs[env_name], on_line=lines.feed, stop=stop)
+                if key == "mfa_stage2":
+                    with _alignment_temp(stage_envs[env_name]) as env:
+                        _run_command(cmd, env, on_line=lines.feed, stop=stop)
+                else:
+                    _run_command(cmd, stage_envs[env_name], on_line=lines.feed, stop=stop)
             if key == "mfa_stage2" and mode.alignment_check:
                 failed, partial = _alignment_check(asr_out / "json", files)
                 for f in partial:

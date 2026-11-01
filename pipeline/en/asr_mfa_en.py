@@ -142,6 +142,14 @@ def resolve_asr_device(device: str) -> Tuple[str, torch.dtype]:
 
 ASR_BACKEND = "qwen-asr (PyTorch)"  # set by load_models; recorded in the Stage 1 JSON
 
+# Pieces decoded at once by qwen-asr (PyTorch), which cuts a recording into pieces of up to
+# 180 s. Its default, 32, put every piece of a long recording into one batch, so GPU memory
+# grew with the length: on an 8 GB card 22 min spilled 8 GB into shared memory and Stage 1 had
+# not finished after 93 min (with two: 33 min). Two keeps every recording of up to two pieces
+# (about 6 min, all the evaluation recordings) in the same batch as before. Two full pieces
+# still spill on an 8 GB card and are slow (9.6 min: 24 min). MLX decodes one piece at a time.
+ASR_BATCH_PIECES = 2
+
 
 def _asr_mlx():
     """pipeline/shared/asr_mlx.py, also when this script runs without pipeline/ on PYTHONPATH."""
@@ -185,7 +193,7 @@ def load_models(device: str = "auto"):
         forced_aligner_kwargs={"dtype": dtype, "device_map": resolved_device},
         dtype=dtype,
         device_map=resolved_device,
-        max_inference_batch_size=32,
+        max_inference_batch_size=ASR_BATCH_PIECES,
         max_new_tokens=4096,
     )
     print("Models loaded!")

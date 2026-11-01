@@ -21,8 +21,7 @@ Recordings must be inside the current folder. For a computer without a GPU,
 build with `--build-arg TORCH=cpu`. Run `container/clausa clean` before
 deleting the folder.
 
-**Mac or Linux: conda.** Needs [Miniforge](https://conda-forge.org/download/)
-and Python 3.9 or later.
+**Mac or Linux.** Needs [pixi](https://pixi.sh) and Python 3.9 or later.
 
 ```bash
 git clone https://github.com/0ldriku/Clausa.git
@@ -31,9 +30,8 @@ cd Clausa
 ./clausa doctor
 ```
 
-**Windows: micromamba.** Needs git,
-[micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)
-and Python 3.9 or later. Use a short path.
+**Windows.** Needs git, [pixi](https://pixi.sh) and Python 3.9 or later. Use
+a short path.
 
 ```bat
 git clone https://github.com/0ldriku/Clausa.git C:\Clausa-src
@@ -44,8 +42,18 @@ python clausa doctor
 
 On Windows, write `python clausa` instead of `./clausa`.
 
-`setup` creates three conda environments, `qwen3-asr`, `mfa` and
-`ja-electra310`, and downloads the models into `.cache/`, about 8 GB.
+`setup` installs three environments, `qwen3-asr`, `mfa` and `ja-electra310`,
+into `.pixi/envs/`, every package at the version in `pixi.lock`, and
+downloads the models into `.cache/`, about 8 GB. On Windows and Linux,
+PyTorch is the CUDA build when there is an NVIDIA GPU; `--torch cpu` installs
+`qwen3-asr-cpu` instead. pixi is needed only for `setup`; run it again after
+updating Clausa.
+
+`./clausa setup --conda` makes conda environments instead, with
+[Miniforge](https://conda-forge.org/download/) or, on Windows,
+[micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html).
+They have the article's pins; the packages those leave open come out at their
+newest.
 
 ## Run
 
@@ -69,11 +77,28 @@ span:
 - `--windows CSV`: columns `file_id,start,end`, where `file_id` is the file
   name without its extension.
 
+## Measures after corrections
+
+Correct the TextGrids in `clauses/` in Praat, save them as text files with the
+same tier names, then compute the measures again from them as they are now:
+
+```bash
+./clausa measures en output/en/recording               # writes output/en/recording/measures.csv
+./clausa measures en output/en/recording -o fixed.csv
+```
+
+Beside it go `words.csv`, `pauses.csv` and `clauses.csv` (with `-o fixed.csv`:
+`fixed_words.csv` ...), the tables of [Measures](measures.md#tables). A
+TextGrid you did not change gives the same row as the run's
+`uf/uf_measures.csv`. A TextGrid without a words or a clauses tier is named and
+left out.
+
 ## Output
 
 ```text
 output/en/recording/
 ├── uf/uf_measures.csv     the nine measures, one row per recording
+├── uf/uf_words.csv ...    their words, pauses and clauses (measures.md, Tables; not with --paper-compat)
 ├── asr/textgrids/         words and pauses, for Praat
 ├── clauses/               words, pauses, disfluencies and clauses, for Praat
 ├── islands/               speech found inside pauses

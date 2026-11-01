@@ -89,18 +89,25 @@ def doctor() -> int:
         problems += not ok
 
     print(f"Clausa {__version__}\nRepository: {paths.REPO_ROOT}\nCache:      {paths.CACHE_DIR}\n")
+    setup_fix = "./clausa setup"
     if paths.ENVS_DIR is not None:
         print(f"Bundled environments (no conda): {paths.ENVS_DIR}\n")
+    elif any(envs.pixi_prefix(env_name) for env_name, _ in CHECKS):
+        print(f"pixi's environments: {paths.PIXI_ENVS_DIR}\n")
     else:
         try:
             print(f"Conda: {envs.conda_exe()}\n")
-        except FileNotFoundError as exc:
-            print(f"MISSING  conda\n           -> {exc}")
+        except FileNotFoundError:
+            where = f"none in {paths.PIXI_ENVS_DIR}, " if paths.PIXI_ENVS_DIR else ""
+            print(f"MISSING  environments ({where}no conda)\n"
+                  "           -> ./clausa setup (needs pixi: https://pixi.sh), "
+                  "or ./clausa setup --conda (needs Miniforge or micromamba)")
             return 1
+        setup_fix = "./clausa setup --conda, or ./clausa setup (pixi)"
 
     print("Environments")
     for env_name, code in CHECKS:
-        fix = ("./clausa setup" if paths.ENVS_DIR is None
+        fix = (setup_fix if paths.ENVS_DIR is None
                else f"environment folder missing or broken: {paths.ENVS_DIR / env_name}")
         try:
             # As the stages run: the cache's models, offline (HF_HUB_OFFLINE), so that
@@ -111,7 +118,18 @@ def doctor() -> int:
             report(False, env_name, fix)
             continue
         detail = result.stdout.strip().splitlines()[-1] if result.returncode == 0 and result.stdout.strip() else ""
-        report(result.returncode == 0, f"{env_name}  {detail}", fix)
+        pixi = envs.pixi_prefix(env_name) if paths.ENVS_DIR is None else None
+        report(result.returncode == 0, f"{pixi.name if pixi else env_name}  {detail}", fix)
+    if paths.ENVS_DIR is None:
+        # pixi's environments come from this checkout's pixi.lock (a new version may change it).
+        stale = []
+        for env_name in dict.fromkeys(name for name, _ in CHECKS):
+            prefix = envs.pixi_prefix(env_name)
+            mark = envs.pixi_lock_mark(prefix) if prefix else None
+            if mark and (not mark.is_file() or mark.read_text(encoding="ascii").strip() != envs.pixi_lock_sha256()):
+                stale.append(prefix.name)
+        if stale:
+            report(False, f"{', '.join(stale)}  not installed from this pixi.lock", "./clausa setup", bad="OTHER")
 
     print("\nModels")
     if paths.FILLER_MODEL.exists():

@@ -36,7 +36,8 @@ esac
 
 opts=(--rm --security-opt label=disable --user root --shm-size 16g
       -v "$REPO:/repo" -v "$CACHE:/cache" -v "$PWD:/work" -w /work
-      -e CLAUSA_CACHE=/cache -e CLAUSA_JOBS=/work/jobs)
+      -e CLAUSA_CACHE=/cache -e CLAUSA_JOBS=/work/jobs
+      -e CLAUSA_PIXI_ENVS=)  # as the Containerfile's ENV, also for images built before it
 if command -v nvidia-ctk >/dev/null && nvidia-ctk cdi list 2>/dev/null | grep -q 'nvidia.com/gpu=all'; then
   opts+=(--device nvidia.com/gpu=all)
 fi

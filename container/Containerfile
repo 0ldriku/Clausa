@@ -1,6 +1,6 @@
 # The pipeline's conda environments in one image (Linux, NVIDIA GPU or CPU).
 #
-# Environments come from `clausa setup` (runner/setup_envs.py); models are not
+# Environments come from setup's conda route (runner/setup_envs.py); models are not
 # baked in and download into the host cache on first use.
 #
 #   container/clausa build
@@ -9,8 +9,10 @@
 FROM docker.io/mambaorg/micromamba:2.0.5
 
 USER root
+# CLAUSA_PIXI_ENVS empty: the image's environments, never pixi's in a mounted checkout (.pixi/).
 ENV MAMBA_ROOT_PREFIX=/opt/conda \
     MAMBA_EXE=/bin/micromamba \
+    CLAUSA_PIXI_ENVS="" \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1
 

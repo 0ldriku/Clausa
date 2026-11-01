@@ -14,7 +14,10 @@ Input:
 Usage:
   python caf_calculator_vad_classifier.py <clauses folder> \
     --candidate-dir <gap_candidates>/per_file \
-    --file-list-json <file_list.json> --output uf_measures.csv
+    --file-list-json <file_list.json> --output uf_measures.csv [--tables-dir <folder>]
+
+  --tables-dir also writes the words, pauses and clauses the measures come from
+  (shared/uf_tables.py).
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -30,6 +34,9 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from praatio import textgrid
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # pipeline/, for shared/
+from shared import uf_tables  # noqa: E402
 
 
 @dataclass
@@ -478,6 +485,14 @@ class CAFCalculator:
             "clf_refined_pause_count": self.clf_stats.refined_pause_count,
         }
 
+    def tables(self, fname: str) -> Dict:
+        """This recording's rows of uf_words.csv, uf_pauses.csv and uf_clauses.csv (shared/uf_tables.py)."""
+        parts = self.mid_clause_pauses + self.end_clause_pauses + self.other_pauses
+        return uf_tables.rows(
+            fname, [(w.start, w.end, w.text, w.syllable_count) for w in self.tg.words if not w.is_pause],
+            uf_tables.disfluent_spans(self.tg.tg), [(c.start, c.end, c.text) for c in self.clauses],
+            [(p.start, p.end) for p in self.pauses], [(p.start, p.end, p.location) for p in parts])
+
 
 def _load_file_id_filter(json_path: Optional[str], key: str) -> Optional[set]:
     if not json_path:
@@ -494,6 +509,7 @@ def process_directory(
     candidate_dir: str,
     min_pause: float = 0.25,
     file_ids_filter: Optional[set] = None,
+    tables: Optional[list] = None,
 ) -> pd.DataFrame:
     files = [f for f in os.listdir(input_dir) if f.lower().endswith(".textgrid")]
     if file_ids_filter:
@@ -513,6 +529,12 @@ def process_directory(
         except Exception as e:
             print(f"Error processing {fname}: {e}")
             rows.append({"file": fname, "error": str(e)})
+            continue
+        if tables is not None and "error" not in m:
+            try:
+                tables.append(calc.tables(fname))
+            except Exception as e:  # the measures row stands; the recording is left out of the tables
+                print(f"Error in the tables of {fname}: {e}")
     return pd.DataFrame(rows)
 
 
@@ -524,9 +546,11 @@ def main() -> None:
     ap.add_argument("--output", "-o", help="Output CSV path")
     ap.add_argument("--file-list-json", help="Optional JSON file containing file_id list")
     ap.add_argument("--file-list-key", default="all_selected", help="JSON key for file list")
+    ap.add_argument("--tables-dir", help="Also write uf_words.csv, uf_pauses.csv and uf_clauses.csv here")
     args = ap.parse_args()
 
     file_filter = _load_file_id_filter(args.file_list_json, args.file_list_key)
+    tables = [] if args.tables_dir else None
 
     if os.path.isdir(args.input):
         df = process_directory(
@@ -534,6 +558,7 @@ def main() -> None:
             candidate_dir=args.candidate_dir,
             min_pause=args.min_pause,
             file_ids_filter=file_filter,
+            tables=tables,
         )
     else:
         tg_reader = TextGridReader(args.input)
@@ -541,12 +566,20 @@ def main() -> None:
         calc = CAFCalculator(tg_reader=tg_reader, min_pause=args.min_pause, refiner=refiner)
         out = calc.calculate_all()
         out["file"] = os.path.basename(args.input)
+        if tables is not None and "error" not in out:
+            try:
+                tables.append(calc.tables(out["file"]))
+            except Exception as e:
+                print(f"Error in the tables of {out['file']}: {e}")
         df = pd.DataFrame([out])
 
     if args.output:
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(args.output, index=False)
         print(f"\nSaved: {args.output}")
+    if tables is not None:
+        uf_tables.write(Path(args.tables_dir), "syllables", tables)
+        print(f"Saved: {args.tables_dir}")
 
     main_cols = ["file", "AR", "SR", "MLR", "MCPR", "ECPR", "PR", "MCPD", "ECPD", "MPD"]
     cols = [c for c in main_cols if c in df.columns]

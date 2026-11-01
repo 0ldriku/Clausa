@@ -132,8 +132,8 @@ def relative_entry_points(prefix: Path) -> int:
     environment's, after conda-unpack): #!python.exe (or pythonw.exe) instead. The launcher beside
     it (<name>.exe, setuptools' cli-64.exe, as conda-pack's own conda-unpack.exe uses) looks for a
     relative name in the folder above Scripts, which is the environment; the folder can then move.
-    (pip's own launcher .exe files keep conda-unpack's absolute path; nothing Clausa runs uses one:
-    the stages run python.exe, and MFA is conda's entry point mfa.exe with mfa-script.py.)"""
+    (the PyPI packages' launcher .exe files, uv's, keep the build's path; nothing Clausa runs uses
+    one: the stages run python.exe, and MFA is conda's entry point mfa.exe with mfa-script.py.)"""
     count = 0
     for script in [*prefix.glob("Scripts/*-script.py"), *prefix.glob("Scripts/*-script.pyw")]:
         data = script.read_bytes()

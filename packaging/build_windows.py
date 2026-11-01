@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build the portable Windows app: Clausa-<version>-windows-x64.zip and its .sha256.
 
-Run on a Windows x64 PC from a checkout of the commit to release, with any
-Python 3.9+ (standard library only), git and conda-pack:
+Run on a Windows x64 PC from a checkout of the commit to release, set up with
+`python clausa setup --torch cuda` (pixi's environments, from pixi.lock), with
+any Python 3.9+ (standard library only), git and conda-pack:
 
     python packaging\\build_windows.py --out <folder> [--conda-pack <path>] [--git <path>]
 
@@ -11,9 +12,9 @@ The zip holds one folder, Clausa\\:
     Clausa.exe            the launcher (packaging/windows/launcher.cs, compiled here with the
                           .NET Framework's csc.exe); the first start also runs First start
     Read me first.html    the one-page guide (packaging/windows/read_me_first.html)
-    envs\\                 qwen3-asr.tar, mfa.tar, ja-electra310.tar: each environment packed
-                          by conda-pack as <name>\\..., trimmed (TRIM); First start unpacks it
-                          and runs conda-unpack there
+    envs\\                 qwen3-asr.tar, mfa.tar, ja-electra310.tar: each of pixi's environments
+                          byte-compiled, packed by conda-pack as <name>\\..., trimmed (TRIM);
+                          First start unpacks it and runs conda-unpack there
     cache\\                empty: First start downloads the pinned models into it
                           (runner/models.py); with --include-models it holds their files
     app\\                  the code: `git archive` of HEAD (no paper/, docs/, bench/, training/,
@@ -50,10 +51,11 @@ import tempfile
 import time
 import zipfile
 from pathlib import Path, PurePosixPath
+from urllib.parse import unquote
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-os.environ.pop("CLAUSA_ENVS_DIR", None)  # find the conda environments, not a bundle's
+os.environ.pop("CLAUSA_ENVS_DIR", None)  # the checkout's pixi environments, not a bundle's
 
 from runner import envs, models, paths  # noqa: E402
 
@@ -107,6 +109,23 @@ def gb(n: int) -> str:
 # ---------------------------------------------------------------- checks
 
 
+def conda_records(prefix: Path) -> list[dict]:
+    """The environment's conda packages (conda-meta\\*.json)."""
+    return [json.loads(f.read_text(encoding="utf-8")) for f in sorted((prefix / "conda-meta").glob("*.json"))]
+
+
+def pixi_lock_wheels() -> dict[str, str]:
+    """pixi.lock's PyPI wheels: file name -> sha256. The lock is YAML, read here line by line (no YAML
+    library): each package is a "- pypi: <url>" line at the start of a line, its fields indented below."""
+    wheels, current = {}, None
+    for line in paths.PIXI_LOCK.read_text(encoding="utf-8").splitlines():
+        if line.startswith("- "):
+            current = unquote(line[len("- pypi: "):].rsplit("/", 1)[-1]) if line.startswith("- pypi: ") else None
+        elif current and line.startswith("  sha256: "):
+            wheels[current] = line.split(":", 1)[1].strip()
+    return wheels
+
+
 def check(args) -> tuple[dict[str, Path], list[str]]:
     """Check every input; print what will be packed. Returns (env prefixes, problems)."""
     problems, notes = [], []
@@ -129,6 +148,10 @@ def check(args) -> tuple[dict[str, Path], list[str]]:
         return {}, problems
 
     head = run([args.git, "-C", REPO, "rev-parse", "--short", "HEAD"]).stdout.strip()
+    if subprocess.run([str(args.git), "-C", str(REPO), "diff", "--quiet", "HEAD", "--", "pixi.lock",
+                       "pixi.toml"]).returncode:
+        problems.append("pixi.lock or pixi.toml differs from HEAD: commit it, then setup (the environments must "
+                        "come from the commit's lock)")
     dirty = run([args.git, "-C", REPO, "status", "--porcelain", "--untracked-files=no"]).stdout.strip()
     print(f"Commit:     {head}" + (" (the working tree has uncommitted changes; they are NOT in the bundle)"
                                    if dirty else ""))
@@ -144,24 +167,38 @@ def check(args) -> tuple[dict[str, Path], list[str]]:
     if args.envs_from:
         prefixes = {name: Path(args.envs_from).expanduser().resolve() / name for name in ENV_NAMES}
     else:
-        prefixes = {name: envs.env_prefix(name) for name in ENV_NAMES}
+        prefixes = mac.default_env_prefixes()
     found = {}
     for name in ENV_NAMES:
         prefix = prefixes.get(name)
         if prefix is None or not (prefix / "python.exe").exists():
-            problems.append(f"environment {name} not found ({prefix or 'conda does not know it'})")
+            problems.append(f"environment {name} not found ({prefix or 'CLAUSA_PIXI_ENVS is empty'}): "
+                            "python clausa setup --no-models --torch cuda")
             continue
         if not (prefix / "conda-meta").is_dir():
             problems.append(f"{prefix} is not a conda environment (no conda-meta\\): conda-pack needs one")
+        problems += mac.lock_problems(name, prefix)
         print(f"  {name:14s} {gb(size_of(prefix)):>8s}  {prefix}")
         found[name] = prefix
-    if paths.MFA_ENV in found and not (found[paths.MFA_ENV] / "Scripts" / "mfa.exe").exists():
-        problems.append(f"no Scripts\\mfa.exe in {found[paths.MFA_ENV]}")
+    if paths.MFA_ENV in found:
+        if not (found[paths.MFA_ENV] / "Scripts" / "mfa.exe").exists():
+            problems.append(f"no Scripts\\mfa.exe in {found[paths.MFA_ENV]}")
+        kaldi = [record.get("build", "") for record in conda_records(found[paths.MFA_ENV]) if record.get("name") == "kaldi"]
+        if not kaldi or not all(build.startswith("cpu") for build in kaldi):
+            problems.append(f"Kaldi in {paths.MFA_ENV} is not its CPU build ({kaldi}): MFA aligns on the processor")
+    # The wheels First start downloads must be the PyTorch that pixi.lock has and qwen3-asr holds (split_torch).
+    lock_wheels = pixi_lock_wheels()
+    for w in json.loads(TORCH_LOCK.read_text(encoding="utf-8"))["cuda"]:
+        if lock_wheels.get(w["file"]) != w["sha256"]:
+            problems.append(f"{TORCH_LOCK.name}: {w['file']} with sha256 {w['sha256'][:12]}... is not in pixi.lock")
+        if paths.ASR_ENV in found and not (found[paths.ASR_ENV] / "Lib" / "site-packages" /
+                                           f"{w['name']}-{w['version']}.dist-info").is_dir():
+            problems.append(f"{paths.ASR_ENV} has no {w['name']} {w['version']} (setup --torch cuda installs it)")
     if paths.ASR_ENV in found:
         site = found[paths.ASR_ENV] / "Lib" / "site-packages"
         if not (site / "webview").is_dir() or not (site / "clr_loader").is_dir():
             problems.append(f"pywebview (with pythonnet) is not installed in {paths.ASR_ENV}: the app window "
-                            "cannot open (pip install -r runner/requirements/asr-windows.txt)")
+                            "cannot open (pixi.toml installs it on Windows)")
 
     if args.include_models:
         cache = Path(args.cache_from).expanduser().resolve()
@@ -196,17 +233,41 @@ def check(args) -> tuple[dict[str, Path], list[str]]:
 
 
 def pack_env(conda_pack: str, name: str, prefix: Path, tar: Path) -> list[str]:
-    """conda-pack the environment into tar as <name>\\..., trimmed; returns conda-pack's warnings."""
+    """conda-pack the environment into tar as <name>\\..., trimmed, without pixi's own records
+    (mac.conda_pack_cmd); returns conda-pack's warnings."""
     excludes = [x for pattern in TRIM for x in ("--exclude", pattern)]
-    # --ignore-missing-files: pip upgraded conda's own pip and setuptools in the
-    # environments, so files conda lists are gone; nothing the pipeline uses.
-    result = run([conda_pack, "-p", prefix, "-o", tar, "--format", "tar", "--arcroot", name,
-                  "--ignore-missing-files", "--force", "--quiet", *excludes])
+    result = run(mac.conda_pack_cmd(conda_pack, prefix, tar, "--arcroot", name, *excludes))
+    mac.check_conda_pack(name, result)
     return [line for line in (result.stdout + result.stderr).splitlines() if line.strip()]
 
 
-def filter_unpack_records(name: str, tar: Path, drop: frozenset = frozenset()) -> tuple[int, int]:
-    """Keep in conda-unpack's list only the files that hold a path it replaces; leave out `drop`.
+def compile_env(prefix: Path) -> tuple[int, int, int]:
+    """mac.compile_env for a Windows environment, in place before conda-pack packs it (the tar comes
+    straight from it), with its Python alone (no PYTHON* settings); filter_unpack_records adds any
+    .pyc files that conda-pack leaves out."""
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("PYTHON") and k != "SOURCE_DATE_EPOCH"}
+    return mac.compile_env(prefix / "python.exe", prefix / "Lib" / "site-packages", env)
+
+
+def left_out_pyc(name: str, prefix: Path, names: set[str], drop: frozenset) -> list[tuple[Path, str]]:
+    """The .pyc files in site-packages (compile_env's) that conda-pack left out of the tar: those of
+    conda packages' .py files that the packages' records do not list (pixi compiles no noarch
+    package). conda-pack 0.9.2 leaves none out on Windows (it compares their sources' paths with
+    its records' case-folded ones, which never match there), unlike on the Mac: this keeps the
+    tar whole if that changes. (file, tar member) for each whose .py is in the tar or put back
+    by First start."""
+    found = []
+    for pyc in (prefix / "Lib" / "site-packages").rglob("__pycache__/*.pyc"):
+        arc = f"{name}/" + pyc.relative_to(prefix).as_posix()
+        py = f"{name}/" + (pyc.parent.parent / (pyc.name.split(".", 1)[0] + ".py")).relative_to(prefix).as_posix()
+        if arc not in names and (py in names or py in drop):
+            found.append((pyc, arc))
+    return found
+
+
+def filter_unpack_records(name: str, tar: Path, prefix: Path, drop: frozenset = frozenset()) -> tuple[int, int, int]:
+    """Keep in conda-unpack's list only the files that hold a path it replaces; leave out `drop`;
+    add the .pyc files conda-pack left out (left_out_pyc).
 
     conda-pack lists every file pip installed (it cannot tell which hold the build path), so
     conda-unpack at First start read all of them: 36,211 of qwen3-asr's 41,271 files, 172 s
@@ -215,7 +276,7 @@ def filter_unpack_records(name: str, tar: Path, drop: frozenset = frozenset()) -
     record of a file that holds neither does nothing and is left out. The tar is rewritten
     (members and their order as they were), with that list, without the members named in drop
     (the files First start takes from the PyTorch wheels: split_torch). Returns (records
-    before, after).
+    before, after, .pyc files added).
     """
     script = f"{name}/Scripts/conda-unpack-script.py"
     with tarfile.open(tar) as t:
@@ -227,10 +288,11 @@ def filter_unpack_records(name: str, tar: Path, drop: frozenset = frozenset()) -
     wanted = {}
     for path, placeholder, mode in records:
         wanted.setdefault(f"{name}/" + path.replace("\\", "/"), []).append((path, placeholder, mode))
-    kept = []
+    kept, names = [], set()
     out = tar.with_name(tar.name + ".filtering")
     with tarfile.open(tar) as t, tarfile.open(out, "w", format=t.format) as o:
         for m in t:
+            names.add(m.name)
             if m.name in drop:
                 continue
             if m.name == script or not m.isfile():
@@ -243,13 +305,20 @@ def filter_unpack_records(name: str, tar: Path, drop: frozenset = frozenset()) -
                 if placeholder in data or (record[2] == "binary" and placeholder.lower() in data):
                     kept.append(record)
             o.addfile(m, io.BytesIO(data))
+        added = left_out_pyc(name, prefix, names, drop)
+        for path, arc in added:
+            info = o.gettarinfo(str(path), arcname=arc)
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            with path.open("rb") as f:
+                o.addfile(info, f)
         info = t.getmember(script)
         text = source[:start] + f"_prefix_records = [{nl}" + f",{nl}".join(map(repr, kept)) + f"{nl}]{nl}" + source[end:]
         data = text.encode("utf-8")
         info.size = len(data)
         o.addfile(info, io.BytesIO(data))
     os.replace(out, tar)
-    return len(records), len(kept)
+    return len(records), len(kept), len(added)
 
 
 def split_torch(name: str, prefix: Path, wheels_dir: Path) -> tuple[frozenset, dict]:
@@ -259,7 +328,7 @@ def split_torch(name: str, prefix: Path, wheels_dir: Path) -> tuple[frozenset, d
     start downloads the pinned wheels (TORCH_LOCK) and puts them back. A file is left out of
     the tar only if a wheel holds it byte for byte at the same place (Lib\\site-packages\\<member>)
     and TRIM does not remove it; everything else of torch's stays in the tar (the .pyc files
-    pip compiled, its RECORD, INSTALLER, the launchers in Scripts\\), so that the environment
+    compile_env wrote, its RECORD, INSTALLER, the launchers in Scripts\\), so that the environment
     after First start is the validated one file for file. The manifest lists the wheels and,
     for each file, its wheel member, path, size, sha256 and time (Python checks a .pyc against
     its source's time). Returns (tar member names to leave out, manifest).
@@ -312,8 +381,8 @@ def check_tar(name: str, tar: Path) -> tuple[int, str, list[str]]:
             inside = "/".join(parts[1:]).lower()
             if m.isfile():
                 count += 1
-                if any(fnmatch.fnmatchcase(inside, pattern.lower()) for pattern in TRIM):
-                    problems.append(f"{m.name}: should have been left out (TRIM)")
+                if any(fnmatch.fnmatchcase(inside, pattern.lower()) for pattern in (*TRIM, *mac.PIXI_FILES)):
+                    problems.append(f"{m.name}: should have been left out (TRIM, pixi's records)")
             longest = max(longest, "envs\\" + m.name.replace("/", "\\"), key=len)
     for needed in (f"{name}/python.exe", f"{name}/Scripts/conda-unpack-script.py"):
         if needed not in names:
@@ -321,10 +390,27 @@ def check_tar(name: str, tar: Path) -> tuple[int, str, list[str]]:
     return count, longest, problems[:10]
 
 
+def pypi_launchers(prefix: Path) -> set[str]:
+    """The launchers of the PyPI packages' commands (Scripts\\<command>.exe, as their RECORD files list
+    them), relative to the environment, in lower case."""
+    found = set()
+    for record in prefix.glob("Lib/site-packages/*.dist-info/RECORD"):
+        for line in record.read_text(encoding="utf-8", errors="replace").splitlines():
+            path = line.split(",", 1)[0].replace("\\", "/").lower()
+            if path.startswith("../../scripts/") and path.endswith(".exe"):
+                found.add(path[len("../../"):])
+    return found
+
+
 def verify_env(name: str, tar: Path, scratch: Path, source: Path) -> list[str]:
     """Unpack the tar into scratch as First start does (tar.exe, conda-unpack, relative entry
-    points: the same code), then check: the Python starts; no file but .pyc files and conda-meta
-    still holds the source prefix; for MFA, Scripts\\mfa.exe runs."""
+    points: the same code), then check: the Python starts; no file but .pyc files, conda-meta and
+    the PyPI packages' launchers still holds the source prefix; for MFA, Scripts\\mfa.exe runs.
+
+    The launchers (uv's Scripts\\<command>.exe) name the Python by the build's path, which
+    conda-unpack cannot rewrite (it rewrites only pip's launchers); nothing Clausa runs uses one:
+    the stages run python.exe, and MFA is conda's entry point, whose launcher finds the Python
+    beside it."""
     sys.path.insert(0, str(WINDOWS))
     import first_start  # noqa: E402
     problems = []
@@ -354,7 +440,8 @@ def verify_env(name: str, tar: Path, scratch: Path, source: Path) -> list[str]:
         if result.returncode != 0 or not result.stdout.strip():
             problems.append(f"mfa.exe version failed: {(result.stdout + result.stderr).strip()[-300:]}")
     needles = {str(source).encode(), str(source).replace("\\", "/").encode()}
-    held = []
+    launchers = pypi_launchers(prefix)
+    held, kept = [], 0
     for dirpath, _, names in os.walk(prefix):
         if "conda-meta" in Path(dirpath).parts:
             continue
@@ -367,7 +454,12 @@ def verify_env(name: str, tar: Path, scratch: Path, source: Path) -> list[str]:
             except OSError:
                 continue
             if any(x in data for x in needles):
-                held.append(str(p.relative_to(scratch)))
+                if p.relative_to(prefix).as_posix().lower() in launchers:
+                    kept += 1
+                else:
+                    held.append(str(p.relative_to(scratch)))
+    if kept:
+        say(f"  {kept} launchers of PyPI packages' commands (Scripts\\*.exe, unused) keep the build's path")
     if held:
         problems.append(f"{len(held)} files still hold {source}: {held[:5]}")
     return problems
@@ -537,6 +629,16 @@ def write_zip(root: Path, zip_path: Path, last: str, make_last) -> int:
     return count
 
 
+def staged_lock_mark(tar: Path) -> str | None:
+    """The pixi.lock sha256 setup noted in a staged environment tar (conda-meta/clausa-pixi-lock.sha256), or None."""
+    name = "conda-meta/" + envs.pixi_lock_mark(Path("env")).name
+    with tarfile.open(tar) as t:
+        for m in t:
+            if m.isfile() and m.name.replace("\\", "/").lstrip("./").endswith(name):
+                return t.extractfile(m).read().decode("ascii").strip()
+    return None
+
+
 def staged_extras(root: Path) -> list[str]:
     """What a staging folder holds in envs\\ beyond the three tars (a test that ran First start
     in it would have unpacked them); such a folder must not be zipped again."""
@@ -548,8 +650,9 @@ def staged_extras(root: Path) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True, help="folder for the zip, its .sha256 and (while building) staging\\")
-    ap.add_argument("--envs-from", help="folder holding the three conda environments as <name>\\ "
-                                        "(default: the conda environments this checkout runs with)")
+    ap.add_argument("--envs-from", help="folder holding the three environments as <name>\\, installed by "
+                                        "python clausa setup from this checkout's pixi.lock (default: pixi's, "
+                                        ".pixi\\envs\\ or CLAUSA_PIXI_ENVS)")
     ap.add_argument("--include-models", action="store_true",
                     help="put the pinned models and PyTorch's wheels into the zip (about 12 GB more), for use "
                          "without internet; by default First start downloads them")
@@ -588,6 +691,10 @@ def main() -> int:
         if extra:
             sys.exit(f"--from-staging: {root} holds more than a build leaves there (a test ran First start "
                      f"in it?); build again without --from-staging:\n  " + "\n  ".join(extra))
+        for name in ENV_NAMES:
+            if staged_lock_mark(root / "envs" / f"{name}.tar") != envs.pixi_lock_sha256():
+                sys.exit(f"--from-staging: the staged {name}.tar is not from this checkout's pixi.lock; build again "
+                         "without --from-staging")
         say(f"Reusing the environment tars of {root}")
         for item in ("app", "logs", "cache", "Clausa.exe", "Read me first.html"):
             p = root / item
@@ -610,7 +717,9 @@ def main() -> int:
         tar = root / "envs" / f"{name}.tar"
         if not args.from_staging:
             t = time.monotonic()
-            say(f"Environment {name}: conda-pack (trimmed: {', '.join(TRIM)})")
+            before, after, failed = compile_env(prefixes[name])
+            say(f"Environment {name}: byte-compiled ({before:,} .pyc files, now {after:,}; {failed} did not "
+                f"compile); conda-pack (trimmed: {', '.join(TRIM)})")
             for line in pack_env(args.conda_pack, name, prefixes[name], tar):
                 say(f"  conda-pack: {line}")
             drop = frozenset()
@@ -619,8 +728,9 @@ def main() -> int:
                 (root / "envs" / TORCH_MANIFEST).write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
                 say(f"  PyTorch: {len(drop):,} files ({gb(manifest['bytes'])}) left to First start, from "
                     + ", ".join(w["file"] for w in manifest["wheels"]))
-            before, after = filter_unpack_records(name, tar, drop)
-            say(f"  conda-unpack's list: {after:,} of {before:,} files hold a path it replaces")
+            before, after, added = filter_unpack_records(name, tar, prefixes[name], drop)
+            say(f"  conda-unpack's list: {after:,} of {before:,} files hold a path it replaces; {added:,} .pyc "
+                "files of conda packages added")
             times[name] = time.monotonic() - t
         count, longest, problems = check_tar(name, tar)
         if problems:

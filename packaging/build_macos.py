@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build the portable Mac app: Clausa-<version>-macos-arm64.zip and its .sha256.
 
-Run on an Apple Silicon Mac from a checkout of the commit to release, with any
-Python 3.9+ (standard library only) and conda-pack:
+Run on an Apple Silicon Mac from a checkout of the commit to release, set up
+with `./clausa setup` (pixi's environments, from pixi.lock), with any Python
+3.9+ (standard library only) and conda-pack:
 
     python3 packaging/build_macos.py --out <folder> [--conda-pack <path>]
 
@@ -11,9 +12,10 @@ The zip holds one folder, Clausa/:
     Clausa.app            app bundle; its executable is packaging/macos/launcher.sh
     First start.command   run once after unzipping (packaging/macos/first_start.command)
     Read me first.html    the one-page guide (packaging/macos/read_me_first.html)
-    envs/                 qwen3-asr.tar, mfa.tar, ja-electra310.tar: each environment
-                          packed with conda-pack, unpacked and conda-unpacked here,
-                          libncurses fixed, trimmed, then tarred (First start unpacks it)
+    envs/                 qwen3-asr.tar, mfa.tar, ja-electra310.tar: each of pixi's
+                          environments packed with conda-pack, unpacked and conda-unpacked
+                          here, libncurses fixed, trimmed, byte-compiled, then tarred
+                          (First start unpacks it)
     cache/                empty: First start downloads the pinned models into it
                           (runner/models.py); with --include-models it holds them already
     app/                  the code: `git archive` of HEAD (no paper/, docs/, bench/, training/,
@@ -49,7 +51,7 @@ from typing import Callable
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
-os.environ.pop("CLAUSA_ENVS_DIR", None)  # find the conda environments, not a bundle's
+os.environ.pop("CLAUSA_ENVS_DIR", None)  # the checkout's pixi environments, not a bundle's
 
 from runner import envs, models, paths  # noqa: E402
 
@@ -97,7 +99,19 @@ def clean_env() -> dict[str, str]:
 
 
 def default_env_prefixes() -> dict[str, Path | None]:
-    return {name: envs.env_prefix(name) for name in ENV_NAMES}
+    """pixi's environments of this checkout, by these names (qwen3-asr, not qwen3-asr-cpu)."""
+    return {name: paths.PIXI_ENVS_DIR / name if paths.PIXI_ENVS_DIR else None for name in ENV_NAMES}
+
+
+def lock_problems(name: str, prefix: Path) -> list[str]:
+    """The environment must be installed from this checkout's pixi.lock: setup notes the lock's
+    sha256 in it (runner/envs.py pixi_lock_mark), after `pixi install --locked`."""
+    mark = envs.pixi_lock_mark(prefix)
+    if not mark.is_file():
+        return [f"{prefix} was not installed by ./clausa setup from pixi.lock (no {mark.name})"]
+    if mark.read_text(encoding="ascii").strip() != envs.pixi_lock_sha256():
+        return [f"{name} was installed from another pixi.lock than this checkout's: run ./clausa setup again"]
+    return []
 
 
 def check(args) -> tuple[dict[str, Path], list[str]]:
@@ -118,6 +132,9 @@ def check(args) -> tuple[dict[str, Path], list[str]]:
         print(f"conda-pack: {run([conda_pack, '--version']).stdout.strip()} ({conda_pack})")
 
     head = run(["git", "-C", REPO, "rev-parse", "--short", "HEAD"]).stdout.strip()
+    if subprocess.run(["git", "-C", str(REPO), "diff", "--quiet", "HEAD", "--", "pixi.lock", "pixi.toml"]).returncode:
+        problems.append("pixi.lock or pixi.toml differs from HEAD: commit it, then ./clausa setup (the environments "
+                        "must come from the commit's lock)")
     dirty = run(["git", "-C", REPO, "status", "--porcelain", "--untracked-files=no"]).stdout.strip()
     print(f"Commit:     {head}" + (" (the working tree has uncommitted changes; they are NOT in the bundle)" if dirty else ""))
     audio = [f for f in run(["git", "-C", REPO, "ls-files", "--", *APP_PATHS]).stdout.splitlines()
@@ -135,10 +152,12 @@ def check(args) -> tuple[dict[str, Path], list[str]]:
     for name in ENV_NAMES:
         prefix = prefixes.get(name)
         if prefix is None or not (prefix / "bin" / "python").exists():
-            problems.append(f"environment {name} not found ({prefix or 'conda does not know it'})")
+            problems.append(f"environment {name} not found ({prefix or 'CLAUSA_PIXI_ENVS is empty'}): "
+                            "./clausa setup --no-models")
             continue
         if not (prefix / "conda-meta").is_dir():
             problems.append(f"{prefix} is not a conda environment (no conda-meta/): conda-pack needs one")
+        problems += lock_problems(name, prefix)
         print(f"  {name:14s} {gb(du(prefix)):>8s}  {prefix}")
         found[name] = prefix
     if paths.MFA_ENV in found and not (found[paths.MFA_ENV] / "bin" / "mfa").exists():
@@ -242,12 +261,56 @@ def minimum_macos(root: Path) -> tuple[tuple[int, int], list[str]]:
 # ---------------------------------------------------------------- steps
 
 
+def compile_env(python: Path, site_packages: Path, env: dict[str, str]) -> tuple[int, int, int]:
+    """Byte-compile site-packages in place, as pip and conda do when they install a package.
+
+    pixi writes no .pyc files for PyPI packages (uv) or noarch conda packages, so Python would
+    write them at the first import, in the user's folder. Compiled by the builder, the zip's
+    environments hold them as the conda environments' did: First start's loading and the first
+    analysis do not compile, and the Windows build's longest path counts them. Here: the
+    environment unpacked in staging, after conda-unpack (conda-pack would leave out .pyc files
+    of conda packages that their records do not list); Windows: build_windows.py. Timestamp .pyc
+    files, as pip writes them; up-to-date ones are kept. Files that do not compile (templates,
+    other Python versions' code) are skipped, as pip skips them. Returns (.pyc files before,
+    after, files that did not compile).
+    """
+    before = sum(1 for _ in site_packages.rglob("*.pyc"))
+    result = subprocess.run([str(python), "-m", "compileall", "-q", "-j", "0", "--invalidation-mode", "timestamp",
+                             str(site_packages)], capture_output=True, text=True, errors="replace", env=env)
+    failed = result.stdout.count("*** Error compiling")
+    if result.returncode not in (0, 1) or (result.returncode == 1 and not failed):
+        sys.exit(f"compileall failed ({result.returncode}) in {site_packages}:\n{(result.stdout + result.stderr)[-2000:]}")
+    return before, sum(1 for _ in site_packages.rglob("*.pyc")), failed
+
+
+# pixi's own files, left out of the zips: its records (one names the build checkout), its fingerprint, and
+# rattler's cache-folder tag, which would make backup tools skip the app's environments
+PIXI_FILES = ("conda-meta/pixi", "conda-meta/pixi_env_prefix", "conda-meta/.pixi-environment-fingerprint",
+              "CACHEDIR.TAG")
+
+
+def conda_pack_cmd(conda_pack: str, prefix: Path, tar: Path, *options: str) -> list:
+    """conda-pack's command line for one of pixi's environments. pixi's conda-meta records name the
+    package cache (link.source), so conda-pack takes the conda packages' files, and where they hold
+    the build prefix, from there, as for a conda environment; uv's PyPI packages have no records and
+    are packed as found (conda-pack's unmanaged files)."""
+    excludes = [x for f in PIXI_FILES for x in ("--exclude", f)]
+    return [conda_pack, "-p", prefix, "-o", tar, "--format", "tar", "--force", "--quiet", *excludes, *options]
+
+
+def check_conda_pack(name: str, result: subprocess.CompletedProcess) -> None:
+    """Stop if conda-pack packed conda packages without their cache: it then cannot tell which of
+    their binary files hold the build prefix (pixi's cache was cleaned after setup)."""
+    if "Uncached packages" in result.stdout + result.stderr:
+        sys.exit(f"pixi's package cache no longer holds some of {name}'s packages (cleaned since setup): delete "
+                 f".pixi/envs/{name} and run ./clausa setup --no-models, then build again\n"
+                 + (result.stdout + result.stderr)[-2000:])
+
+
 def pack_env(conda_pack: str, name: str, prefix: Path, dest: Path, tmp: Path) -> None:
     """conda-pack the environment, unpack it at dest, conda-unpack it there."""
     tar = tmp / f"{name}.tar"
-    # --ignore-missing-files: pip upgraded conda's own pip and setuptools in
-    # ja-electra310, so files conda lists are gone; nothing the pipeline uses.
-    run([conda_pack, "-p", prefix, "-o", tar, "--format", "tar", "--ignore-missing-files", "--quiet", "--force"])
+    check_conda_pack(name, run(conda_pack_cmd(conda_pack, prefix, tar)))
     dest.mkdir(parents=True)
     run(["tar", "-xf", tar, "-C", dest])
     tar.unlink()
@@ -612,8 +675,9 @@ def default_version() -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True, help="folder for the zip, its .sha256 and (while building) staging/")
-    ap.add_argument("--envs-from", help="folder holding the three conda environments as <name>/ "
-                                        "(default: the conda environments this checkout runs with)")
+    ap.add_argument("--envs-from", help="folder holding the three environments as <name>/, installed by "
+                                        "./clausa setup from this checkout's pixi.lock (default: pixi's, "
+                                        ".pixi/envs/ or CLAUSA_PIXI_ENVS)")
     ap.add_argument("--include-models", action="store_true",
                     help="put the pinned models into the zip (about 8 GB more), for use without internet; "
                          "by default First start downloads them")
@@ -649,6 +713,11 @@ def main() -> int:
         if extra:
             sys.exit(f"--from-staging: {root} holds more than a build leaves there (a run or test "
                      f"wrote into it?); build again without --from-staging:\n  " + "\n  ".join(extra))
+        for name in ENV_NAMES:
+            mark = envs.pixi_lock_mark(root / "envs" / name)
+            if not mark.is_file() or mark.read_text(encoding="ascii").strip() != envs.pixi_lock_sha256():
+                sys.exit(f"--from-staging: the staged {name} is not from this checkout's pixi.lock; build again "
+                         "without --from-staging")
         say(f"Reusing the environments of {root}")
         run(["rm", "-rf", root / "app", root / "logs", root / "cache", root / "Clausa.app",
              root / "First start.command", root / "Read me first.html"])
@@ -671,7 +740,10 @@ def main() -> int:
             for line in fix_ncurses(root / "envs" / name):
                 say(f"  ncurses fix: {line}")
             freed = trim_env(root / "envs" / name)
-            say(f"  trimmed {gb(freed)}; now {gb(du(root / 'envs' / name))}")
+            site = next((root / "envs" / name).glob("lib/python3*/site-packages"))
+            before, after, failed = compile_env(root / "envs" / name / "bin" / "python", site, clean_env())
+            say(f"  trimmed {gb(freed)}; byte-compiled ({before:,} .pyc files, now {after:,}; {failed} did not "
+                f"compile); now {gb(du(root / 'envs' / name))}")
             left = absolute_loads(root / "envs" / name)
             if left:
                 sys.exit("Libraries still load from the build folder:\n  " + "\n  ".join(left))

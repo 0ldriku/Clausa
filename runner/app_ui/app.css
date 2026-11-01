@@ -98,7 +98,7 @@
      status column a 78 px pill and the two TextGrid chips.
      wide, 1182 and up: 44 + 172 + 136 + (2 x 72 + 5 x 66 + 2 x 76) + 44 = 1022, the name at least 160 */
   --c-no: 44px; --c-prog: 172px; --c-status: 136px; --c-mu: 72px; --c-m: 66px; --c-mg: 76px; --c-act: 44px; --c-rec-min: 160px;
-  /* compact, 944 to 1181 (the sidebar shown at 1280: 1047; the details docked at 1280: 976):
+  /* compact, 944 to 1181 (the sidebar shown at 1280: 1047; the details docked beside it: 743, narrow):
      36 + 116 + 136 + (2 x 56 + 5 x 50 + 2 x 54) + 30 = 788, the name at least 156 */
   --cmp-no: 36px; --cmp-prog: 116px; --cmp-status: 136px; --cmp-mu: 56px; --cmp-m: 50px; --cmp-mg: 54px; --cmp-act: 30px; --cmp-rec: 156px;
   /* narrow, under 944 (900 with the sidebar hidden): 32 + 80 + 132 + (2 x 54 + 5 x 48 + 2 x 52) + 30 = 726,
@@ -196,6 +196,10 @@ tbody tr:focus-visible { outline-offset: -2px; }
 .menu button:hover { background: var(--hover-ctl); }
 .menu .opt span { display: flex; flex-direction: column; gap: 1px; flex: 1; }
 .menu .opt small { color: var(--muted); font-size: var(--fs-s); }
+.menu .opt small code { font-family: var(--mono); }
+.csv-menu { width: max-content; max-width: 400px; }
+.csv-menu .opt small span { display: inline; }
+.csv-menu .info { padding: 6px 10px; }
 .menu .opt .check { visibility: hidden; color: var(--done-word); }
 .menu .opt[aria-checked="true"] { background: var(--selected); }
 .menu .opt[aria-checked="true"] .check { visibility: visible; }
@@ -215,6 +219,11 @@ tbody tr:focus-visible { outline-offset: -2px; }
 /* ---------- the table ---------- */
 .tablewrap { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 table { width: 100%; min-width: calc(var(--c-no) + var(--c-rec-min) + var(--c-prog) + var(--c-status) + 2 * var(--c-mu) + 5 * var(--c-m) + 2 * var(--c-mg) + var(--c-act)); border-collapse: separate; border-spacing: 0; table-layout: fixed; flex-shrink: 0; }
+/* Annotate has no measure columns, Compute no progress column; Compute's statuses are longer */
+.window.mode-annotate table { min-width: calc(var(--c-no) + var(--c-rec-min) + var(--c-prog) + var(--c-status) + var(--c-act)); }
+.window.mode-compute table { min-width: calc(var(--c-no) + var(--c-rec-min) + var(--c-status) + 48px + 2 * var(--c-mu) + 5 * var(--c-m) + 2 * var(--c-mg) + var(--c-act)); }
+.window.mode-compute col.c-status { width: calc(var(--c-status) + 48px); }
+.window.mode-compute .st .badge, .window.mode-compute .ins-meta .badge { width: auto; }
 col.c-no { width: var(--c-no); }
 col.c-prog { width: var(--c-prog); }
 col.c-status { width: var(--c-status); }
@@ -257,6 +266,7 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 .badge.running { background: var(--run-bg); color: var(--run-ink); }
 /* never analysed: an outline, no fill, so it reads apart from Waiting (queued in this run) */
 .badge.new { background: transparent; box-shadow: inset 0 0 0 1px var(--new-line); color: var(--muted); }
+.badge.ready { background: transparent; box-shadow: inset 0 0 0 1px var(--new-line); color: var(--text); }
 .badge.done svg { color: var(--done-word); }
 .badge.failed svg { color: var(--bad-word); }
 .pulse { width: 8px; height: 8px; margin: 0 3px; border-radius: 4px; background: var(--run-bar); flex-shrink: 0; animation: pulse 1.4s ease-out infinite; }
@@ -351,10 +361,38 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 .files .link { min-width: 0; padding: 0; border: 0; background: transparent; color: var(--text); font-family: var(--mono); font-size: var(--fs-s); text-align: left; text-decoration: underline; text-decoration-color: var(--underline); text-underline-offset: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
 .files .link:hover { text-decoration-color: var(--text); }
 .files .missing { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.files .fhint { display: block; margin: -2px 0 6px 24px; color: var(--muted); font-size: var(--fs-s); line-height: 16px; }
 .err { background: var(--err-bg); border: 1px solid var(--err-line); border-radius: var(--r-box); padding: 12px; color: var(--err-ink); display: flex; flex-direction: column; gap: 6px; line-height: 19px; }
 .err b { font-weight: 600; color: var(--bad-word); }
 .err .small { align-self: flex-start; margin-top: 4px; border-color: var(--err-ctl); color: var(--err-ink); }
 .err .small:hover { background: var(--bad-bg); }
+/* Part to analyse: the waveform with the part between two handles, its times, Play */
+.ins-part { display: flex; flex-direction: column; gap: 10px; }
+.ins-part .sect { margin-bottom: 0; }
+.part-body { display: flex; flex-direction: column; gap: 10px; }
+.wave { position: relative; height: 64px; border-radius: var(--r-ctl); background: var(--ground); box-shadow: inset 0 0 0 1px var(--control); overflow: hidden; touch-action: none; cursor: ew-resize; user-select: none; -webkit-user-select: none; }
+.wave svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wave path { fill: none; stroke-width: 1.2; }
+.wave path.out { stroke: var(--disabled); }
+.wave path.in { stroke: var(--done-word); }
+.wave .sel { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--done-word) 12%, transparent); border-left: 2px solid var(--done-word); border-right: 2px solid var(--done-word); pointer-events: none; }
+.wave .handle { position: absolute; top: 50%; width: 8px; height: 22px; margin: -11px 0 0 -4px; border-radius: 3px; background: var(--done-word); cursor: ew-resize; }
+.wave .handle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wave .playhead { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; }
+.wave .wave-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12px; color: var(--muted); font-size: var(--fs-s); text-align: center; pointer-events: none; }
+.wave.no-wave .sel, .wave.no-wave .handle { display: none; }
+.wave-axis { display: flex; justify-content: space-between; margin-top: -4px; font-family: var(--mono); font-size: var(--fs-s); color: var(--muted); }
+.wave-tools { display: flex; align-items: center; gap: 10px; }
+.wave-tools .small { display: inline-flex; align-items: center; gap: 6px; height: 30px; }
+.wave-tools .hint { color: var(--muted); font-size: var(--fs-s); line-height: 16px; }
+.part-times { display: flex; align-items: center; gap: 10px; }
+.part-times label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.part-times .input { width: 96px; height: 34px; font-family: var(--mono); }
+.part-times .input[aria-invalid="true"] { border-color: var(--bad-word); }
+.part-err { margin: 0; color: var(--bad-word); font-size: var(--fs-s); }
+.part-note { margin: 0; color: var(--muted); font-size: var(--fs-s); line-height: 18px; }
+.ins-part .link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; text-decoration: underline; text-decoration-color: var(--underline); text-underline-offset: 3px; cursor: pointer; }
+.ins-part .link:hover { text-decoration-color: var(--text); }
 .ins-foot-wrap { margin-top: auto; display: flex; flex-direction: column; }
 .ins-foot { height: 32px; border-radius: var(--r-ctl); border: 1px solid var(--control); background: var(--ctl-bg); cursor: pointer; }
 .ins-foot:hover { background: var(--hover-ctl); }
@@ -404,10 +442,11 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 }
 
 /* ---------- the details panel ----------
-   Docked beside the table when the main column holds both (the compact table, 944, plus 304);
-   otherwise it floats over the table's right side, with a brighter edge and no shadow. While it is
-   open the sidebar hides itself if the two do not fit beside each other (app.js, sideOpen). */
-@container main (max-width: 1247px) {
+   Docked beside the table when the main column holds the narrow table (726) and the panel (304),
+   as with the sidebar shown in a 1280 px window: the table then scrolls sideways with # and the
+   name held in place. Narrower, it floats over the table's right side, with a brighter edge and no
+   shadow. It does not hide the sidebar (the author's choice, 1 November 2026). */
+@container main (max-width: 1029px) {
   .inspector { position: absolute; top: 0; right: 0; bottom: 0; width: var(--ins-w); z-index: 10; border-left-color: var(--control); }
 }
 
@@ -417,7 +456,15 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 /* the name, drawn from Cormorant Garamond (outlines: no font file; the symbol #wordmark in index.html) */
 .wordmark { display: block; flex-shrink: 0; fill: var(--text); }
 .defs { position: absolute; }
-.side-new { flex-shrink: 0; justify-content: flex-start; width: 100%; margin: 4px 0 20px; padding: 0 10px; }
+.side-new { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 4px 0 14px; }
+/* the two modes under New project: Annotate, Compute */
+.segmented.modes { flex-shrink: 0; display: grid; grid-template-columns: 1fr 1fr; width: 100%; margin-bottom: 22px; }
+.segmented.modes button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 30px; padding: 0 6px; min-width: 0; }
+:root:lang(ja) .modes button svg { display: none; }  /* アノテーション fills the tab */
+.modes button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modes button svg { flex-shrink: 0; color: var(--icon); }
+.modes button[aria-selected="true"] { background: var(--side-active); color: var(--text); font-weight: 500; }
+.modes button[aria-selected="true"] svg { color: var(--text); }
 .side-label { flex-shrink: 0; padding: 0 8px; margin-bottom: 6px; font-size: var(--fs-s); line-height: 16px; color: var(--muted); }
 .projects { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .projects .group { display: flex; flex-direction: column; gap: 2px; }
@@ -470,6 +517,7 @@ tbody tr[aria-selected="true"] td { background: var(--selected); }
 .sd.waiting { background: var(--wait-bar); }
 .sd.failed { background: var(--bad-bar); }
 .sd.new { box-shadow: inset 0 0 0 1.5px var(--new-dot); }
+.sd.none { box-shadow: inset 0 0 0 1.5px var(--chip-off-line); }
 .stamp { margin-left: auto; color: var(--muted); font-size: var(--fs-s); white-space: nowrap; }
 .filterinfo { flex-shrink: 0; position: sticky; left: 0; display: flex; align-items: center; gap: 4px; padding: 14px var(--gutter); color: var(--muted); }
 

@@ -7,6 +7,10 @@ Give it speech recordings and it returns the annotations as TextGrid files
 (words, pauses, disfluencies, clauses). It works with English and Japanese,
 for second- or first-language speech.
 
+Clausa is a research tool with one purpose: annotating speech recordings as
+accurately as possible, so that researchers can compute utterance fluency
+measures from them.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
   <img alt="A recording goes into Clausa, which gives a TextGrid with words, pauses, disfluency and clauses tiers, and uf_measures.csv with nine measures" src="docs/images/overview-light.svg">
@@ -16,9 +20,11 @@ The name comes from *clause* and *pausa*, Latin for pause.
 
 ## Download
 
-- Mac: [Clausa-1.0.2-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-macos-arm64.zip)
-- Windows: [Clausa-1.0.2-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.2/Clausa-1.0.2-windows-x64.zip)
+- Mac: [Clausa-1.0.3-macos-arm64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-macos-arm64.zip)
+- Windows: [Clausa-1.0.3-windows-x64.zip](https://github.com/0ldriku/Clausa/releases/download/v1.0.3/Clausa-1.0.3-windows-x64.zip)
 - Linux: the [command line](docs/command-line.md)
+
+[What changed in each version](CHANGELOG.md)
 
 ## Requirements
 
@@ -59,10 +65,12 @@ up stops, start it again: it continues where it stopped.
 ## Use
 
 1. Click **New project**. Name it and choose English or Japanese.
-2. Click **Add recordings** or drag audio files (WAV, MP3, FLAC, OGG or M4A)
-   onto the window.
-3. Click **Start**.
-4. When it finishes, click **Open CSV** to see the measures.
+2. In **Annotate**, click **Add recordings** or drag audio files (WAV, MP3,
+   FLAC, OGG or M4A) onto the window, then click **Start**.
+3. Check the TextGrids in Praat and correct them. The folder button on a
+   recording's row opens its session folder; the TextGrid is in `clauses`.
+4. In **Compute**, click **Start**. **Show CSV › Measures** shows `uf_measures.csv`
+   in its folder.
 
 Projects are saved in `Documents/Clausa projects`, unless you choose another
 folder in **Settings** › **Change folder…**.
@@ -97,10 +105,6 @@ Clausa's results are produced automatically and may contain errors. Check
 them before you report them, for example by opening the annotation files in
 Praat. You are responsible for the results you report.
 
-In Japanese, a number written in digits is read one digit at a time. For
-example, 25 (にじゅうご, 4 morae) counts as 2 morae. This changes the measures
-that use morae in recordings with numbers.
-
 ## Speed
 
 Measured on our three computers. One recording is an audio file of 2-3
@@ -121,28 +125,104 @@ minutes of audio in all.
 A TextGrid file for each recording: the start and end time of each word,
 pause, disfluency and clause. This is the main output.
 
-Clausa also computes the nine [measures](#measures) from it into
-`uf_measures.csv`. For other measures, use the TextGrid files, in each
-session's `clauses` folder.
+In **Compute**, Clausa computes the nine [measures](#measures) from the
+TextGrids into `uf_measures.csv`, and writes the words, pauses and clauses they
+came from into `uf_words.csv`, `uf_pauses.csv` and `uf_clauses.csv`
+([columns](docs/measures.md#tables)). For other measures, use these tables or
+the TextGrid files, in each session's `clauses` folder.
 
 ### Can I analyse a conversation or an interview?
 
-Yes. Clausa transcribes and annotates all the speech, but does not yet tell
-speakers apart (speaker diarization is planned). With more than one speaker
-the measures mix them, so use the TextGrid files.
+Yes. Clausa transcribes and annotates all the speech, but does not tell
+speakers apart. With more than one speaker the measures mix them: analyse a
+part where only one person speaks ([part of a recording](#can-i-analyse-only-part-of-a-recording)),
+or use the TextGrid files. Telling speakers apart (speaker diarization) is
+complicated: besides finding the speakers, the measures would need rules for
+the other speaker's turns. It may come in a later project.
 
 ### What counts as a pause?
 
 A silence of 0.25 s or longer between words.
 
-### Can Clausa recompute the measures after I correct a TextGrid?
+### What counts as a clause?
 
-Not yet. A later version will make the measure calculation a separate step.
+A verb with an element, as defined by Vercellotti and Hall (2024,
+[doi:10.1016/j.rmal.2024.100132](https://doi.org/10.1016/j.rmal.2024.100132)):
+finite clauses, coordinated verbs with their own complement or adjunct,
+nonfinite clauses with an overt element, and predicates without a copula. In
+Japanese, a predicate with a subordinator such as から, けど or ので is a clause
+of its own, ending with the subordinator; a て-form verb is one only when it has
+its own complement or adjunct. The article
+gives the rules for both languages ([Citation](#citation)).
+
+### What counts as a disfluency?
+
+The words Clausa's disfluency detector marks: filled pauses (um, えっと),
+repetitions, self-corrections, false starts and partial words, and in Japanese
+also particle corrections and false starts on a word's reading. It does not say
+which kind each one is. Its limits:
+
+- It learned from English conversation (Switchboard) and from synthetic
+  learner sentences, made by rule from written text with the method of Kundu
+  et al. (2022) ([training code](training/disfluency_detector/)).
+- It has not been tested on real second-language speech. On native English
+  speech (DisfluencySpeech) it found 62% of the disfluent words, and 88% of
+  the words it marked were disfluent (F1 .73). Japanese was tested on
+  synthetic sentences only.
+- The synthetic sentences model Japanese learners of English and English
+  speakers learning Japanese; other first languages may differ.
+
+Check the disfluency tier in Praat. Details and references: the
+[model card](https://huggingface.co/oldriku/Clausa).
+
+### What speech was Clausa tested on?
+
+Storytelling monologues by second-language learners, compared with human
+annotation ([Accuracy](#accuracy)): 40 English recordings from ALLSSTAR (36
+speakers, 14 first languages) and 40 Japanese recordings from I-JAS (20
+speakers, four first-language groups), 19 s to 6 min long. Other speech works
+but has not been evaluated: first-language speech, conversation, children,
+other tasks, noisy recordings. Check a sample of your recordings in Praat
+before you rely on the measures.
+
+### How long can a recording be?
+
+On a Mac with Apple silicon, recordings of up to 80 minutes were tested and
+work. On Windows with an 8 GB NVIDIA graphics card, recordings longer than
+about 6 minutes become very slow (a 10-minute recording took over 20 minutes),
+so cut them into parts of under 6 minutes. Linux and larger graphics cards were
+not tested with long recordings.
+
+### Can I analyse only part of a recording?
+
+Yes. In **Annotate**, select a new recording and choose **Part** under **Part
+to analyse**: drag the edges on its waveform or type the times, and **Play the
+part** to check them. Words outside the part are left out of the clauses
+TextGrid and the measures (the words TextGrid keeps them all). One part can go to all new recordings, or each can get its own
+from a CSV (`file_id,start,end`, in seconds) through **Import parts from a
+CSV** in the project's **···** menu. On the command line: `--window 12.5 140`,
+or `--windows` with such a CSV ([Command line](docs/command-line.md)).
+
+### How do I get the measures again after I correct a TextGrid?
+
+Save it in Praat as a text file, in the same place, with its tiers' names
+unchanged. Then click **Start** in **Compute**. A TextGrid you did not change
+gives the same measures as before.
+
+On the command line: `./clausa measures en <output folder>`
+([Command line](docs/command-line.md)).
 
 ### Why are my results different on another computer?
 
 Different computers can give slightly different transcripts. Analyse all
 recordings of one study on the same computer.
+
+### Can I install only English or only Japanese?
+
+Not now. Most of what Clausa installs serves both languages: the speech
+recognition, alignment and disfluency models and the software that runs them.
+The parts for one language only are small: about 1.6 GB for Japanese and
+0.6 GB for English.
 
 ## Languages
 

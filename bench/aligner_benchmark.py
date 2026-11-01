@@ -9,7 +9,7 @@ paper-mode code, so they run from there in both modes.
 
 In the container: container/clausa is for the CLI; run this script with
   podman run ... micromamba run -n base python /repo/bench/aligner_benchmark.py ...
-or on a host where `./clausa setup --easyaligner` has been run.
+or on a host where `./clausa setup --conda --easyaligner` has been run.
 
   asr         Stage 1 once per language          -> <work>/<lang>/asr/pre_mfa_json
   align       Stage 2 for one variant             -> <work>/<lang>/<variant>/asr/{json,textgrids_clean}

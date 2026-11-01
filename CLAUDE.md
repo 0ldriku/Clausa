@@ -37,12 +37,14 @@ Japanese speech. Read first:
   three sections of each `packaging/*/read_me_first.html`.
 - Commit messages explain why, with the validation result.
 - Docs describe the code as it is; no development history or decision logs in
-  the repository.
+  the repository. The exception is `CHANGELOG.md`, each release's changes for
+  users: add to its Unreleased part with every change people notice, and say
+  whether the measures change.
 
 ## Running
 
 ```bash
-./clausa setup && ./clausa doctor          # conda route (macOS, Linux; Windows: python clausa ...)
+./clausa setup && ./clausa doctor          # pixi (setup --conda: conda); Windows: python clausa ...
 ./clausa run en file.wav                   # default
 ./clausa run en file.wav --paper-compat    # paper mode
 container/clausa build && container/clausa doctor            # Linux container
@@ -71,5 +73,5 @@ pipeline code are mounted at run time, so code changes need no rebuild.
   transcripts (`docs/development.md`, "Platforms"); keep them undone.
 - Bench output records its mode in `MODE.json`; mixing modes is refused.
 - `conda run ... python -` does not pass stdin to the script.
-- Setup uses conda-forge only (`--override-channels`): Anaconda's default
-  channel needs its terms accepted.
+- Setup's conda route uses conda-forge only (`--override-channels`):
+  Anaconda's default channel needs its terms accepted.

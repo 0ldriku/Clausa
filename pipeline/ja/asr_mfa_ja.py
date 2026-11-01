@@ -196,6 +196,14 @@ def resolve_asr_device(device: str) -> Tuple[str, torch.dtype]:
 
 ASR_BACKEND = "qwen-asr (PyTorch)"  # set by load_models; recorded in the Stage 1 JSON
 
+# Pieces decoded at once by qwen-asr (PyTorch), which cuts a recording into pieces of up to
+# 180 s. Its default, 32, put every piece of a long recording into one batch, so GPU memory
+# grew with the length: on an 8 GB card 22 min spilled 8 GB into shared memory and Stage 1 had
+# not finished after 93 min (with two: 33 min). Two keeps every recording of up to two pieces
+# (about 6 min, all the evaluation recordings) in the same batch as before. Two full pieces
+# still spill on an 8 GB card and are slow (9.6 min: 24 min). MLX decodes one piece at a time.
+ASR_BATCH_PIECES = 2
+
 
 def _asr_mlx():
     """pipeline/shared/asr_mlx.py, also when this script runs without pipeline/ on PYTHONPATH."""
@@ -239,7 +247,7 @@ def load_models(device: str = "auto"):
         forced_aligner_kwargs={"dtype": dtype, "device_map": resolved_device},
         dtype=dtype,
         device_map=resolved_device,
-        max_inference_batch_size=32,
+        max_inference_batch_size=ASR_BATCH_PIECES,
         max_new_tokens=4096,
     )
     print("Models loaded!")
@@ -429,6 +437,15 @@ def _write_pruned_dictionary(corpus_dir: str, env: Dict[str, str]) -> Optional[s
     return str(out)
 
 
+# MFA's Japanese tokenizer runs SudachiPy on the utterance's text, the whole recording's, and
+# SudachiPy refuses more than 49,149 bytes: from about 55 min of the evaluation's learner speech
+# (72,709 bytes at 82 min) MFA failed and every word kept its rough timing. A longer text goes to
+# MFA untokenized: the text is in MeCab's words already (Stage 1). On the 40 Japanese evaluation
+# recordings, aligned untokenized, 39 gave the same alignment byte for byte; in one, MFA's
+# tokenizer splits a word in two, and 7 of its 236 words moved.
+SUDACHI_MAX_BYTES = 49149
+
+
 def _run_mfa(
     corpus_dir: str,
     output_dir: str,
@@ -450,6 +467,10 @@ def _run_mfa(
         "--beam", "100", "--retry_beam", "400",
         "--num_jobs", str(num_jobs),
     ]
+    lab = Path(corpus_dir) / "utt.lab"
+    if lab.exists() and len(lab.read_text(encoding="utf-8").strip().encode("utf-8")) > SUDACHI_MAX_BYTES:
+        cmd.append("--no_tokenization")
+        print(f"    The text is longer than SudachiPy takes ({SUDACHI_MAX_BYTES} bytes): MFA aligns it untokenized")
     if temporary_directory:
         cmd.extend(["--temporary_directory", temporary_directory])
     try:

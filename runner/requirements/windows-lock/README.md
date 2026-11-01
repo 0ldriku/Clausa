@@ -5,7 +5,9 @@ Exact package lists of the three environments on Windows, made like those in
 as in the Linux container. PostgreSQL is 16 instead of 18; MFA does not use it.
 `qwen3-asr` also has the app window's packages, which these lists leave out:
 `pywebview==6.2.1`, `bottle==0.13.4`, `clr_loader==0.2.10`,
-`proxy_tools==0.1.0` and `pythonnet==3.0.5`.
+`proxy_tools==0.1.0` and `pythonnet==3.0.5`. `pixi.lock` has the same packages
+for win-64 (the window's too), apart from five in `mfa` that nothing needs;
+these lists are for setup's conda route.
 
 To rebuild an environment exactly:
 

@@ -6,6 +6,9 @@ This mirrors the EN `caf_calculator_vad_classifier.py` flow:
 1) Keep ASR/segment outputs unchanged.
 2) Read per-file candidate CSV from gap-candidate postprocess.
 3) Split pause intervals when predicted filler islands overlap them.
+
+--tables-dir also writes the words, pauses and clauses the measures come from
+(shared/uf_tables.py), with morae in place of syllables.
 """
 
 from __future__ import annotations
@@ -13,6 +16,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import sys
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from itertools import accumulate
@@ -24,6 +29,9 @@ import pandas as pd
 from praatio import textgrid
 from sudachipy import dictionary as sudachi_dictionary
 from sudachipy import tokenizer as sudachi_tokenizer
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # pipeline/, for shared/
+from shared import uf_tables  # noqa: E402
 
 _SUDACHI = None
 # Small kana join the kana before them; ッ, ン and ー are morae of their own.
@@ -60,9 +68,9 @@ def kana_readings(words: List[str]) -> List[str]:
     return readings
 
 
-def count_mora(reading: str) -> int:
-    """Morae in a word's kana reading, at least one. A character left unread (e.g. a
-    Latin letter the dictionary does not know) counts one."""
+def _morae(reading: str) -> int:
+    """Morae in a kana reading. A character left unread (e.g. a Latin letter the
+    dictionary does not know) counts one."""
     count = 0
     for ch in reading:
         if "ぁ" <= ch <= "ゖ":
@@ -71,7 +79,179 @@ def count_mora(reading: str) -> int:
             continue
         if "ァ" <= ch <= "ヺ" or ch == "ー" or ch.isalnum():
             count += 1
-    return max(count, 1)
+    return count
+
+
+def count_mora(reading: str) -> int:
+    """Morae in a word's kana reading, at least one."""
+    return max(_morae(reading), 1)
+
+
+# Numbers. The dictionary reads digits one at a time (25 as ニゴ, 100 as イチレイレイ),
+# some kanji numbers as names (三百 as ミツオ, 三本 as ミモト), and a number before a
+# counter as if alone (四時 as ヨンジ; 一 and 人 in two words as イチ ヒト). Numbers are
+# read here as speech synthesis reads them (Open JTalk's njd_set_digit): by place
+# (2 5 = ニジュウ ゴ), with the readings before counters that change the number of
+# morae. Its sound changes (いっぽん, さんびゃく, じゅっぷん) keep the number of morae
+# and are left out.
+NUMBER = re.compile(r"(?:[0-9０-９]{1,3}(?:[,，][0-9０-９]{3})+|[0-9０-９〇一二三四五六七八九十百千万億兆]+)"
+                    r"(?:[.．][0-9０-９]+)?")
+DIGIT = re.compile(r"[0-9０-９]")
+DIGIT_VALUES = {c: i % 10 for i, c in enumerate("0123456789０１２３４５６７８９〇一二三四五六七八九")}
+DIGIT_READINGS = ("レイ", "イチ", "ニ", "サン", "ヨン", "ゴ", "ロク", "ナナ", "ハチ", "キュウ")
+PLACES = {"十": ("ジュウ", 10), "百": ("ヒャク", 100), "千": ("セン", 1000),
+          "万": ("マン", 10 ** 4), "億": ("オク", 10 ** 8), "兆": ("チョウ", 10 ** 12)}
+# The counters before which numbers change their morae: form: (counter, the form's reading).
+COUNTERS = {
+    "年": ("年", "ネン"), "年間": ("年", "ネンカン"), "年生": ("年", "ネンセイ"), "年代": ("年", "ネンダイ"),
+    "年度": ("年", "ネンド"), "年目": ("年", "ネンメ"), "円": ("円", "エン"),
+    "人": ("人", "ニン"), "人目": ("人", "ニンメ"), "人前": ("人", "ニンマエ"), "人組": ("人", "ニングミ"),
+    "時": ("時", "ジ"), "時間": ("時", "ジカン"), "時半": ("時", "ジハン"), "時限": ("時", "ジゲン"),
+    "日": ("日", "ニチ"), "日間": ("日", "ニチカン"), "日目": ("日", "ニチメ"), "月": ("月", "ガツ"),
+    "歳": ("歳", "サイ"), "才": ("歳", "サイ"), "つ": ("つ", "ツ"),
+    # Japanese counters, after which 2 is ふた (Open JTalk's class 3)
+    "箱": ("native", "ハコ"), "皿": ("native", "サラ"), "袋": ("native", "フクロ"), "晩": ("native", "バン"),
+    "口": ("native", "クチ"), "言": ("native", "コト"), "粒": ("native", "ツブ"), "束": ("native", "タバ"),
+    "切れ": ("native", "キレ"), "桁": ("native", "ケタ"), "筋": ("native", "スジ"), "通り": ("native", "トオリ"),
+    "坪": ("native", "ツボ"), "柱": ("native", "ハシラ"),
+}
+# The last digit's reading: 四年 ヨネン, 十四人 ジュウヨニン, 九時 クジ, 四月 シガツ.
+LAST_DIGIT = {"年": {4: "ヨ"}, "円": {4: "ヨ"}, "人": {4: "ヨ"}, "時": {4: "ヨ", 9: "ク"}, "日": {9: "ク"},
+              "月": {4: "シ", 9: "ク"}}
+# Some numbers' readings with their counter, (number, counter): 一人 ヒト リ, 三日 ミッ カ,
+# 二十歳 ハタ チ, 九つ ココノ ツ, 二箱 フタ (ハコ). Only before the forms in WHOLE_FORMS (or
+# a Japanese counter), with the rest of the form's reading: 一人目 ヒト リメ, but 一人前 イチニンマエ.
+WHOLE = {
+    "人": {1: ("ヒト", "リ"), 2: ("フタ", "リ")},
+    "日": {2: ("フツ", "カ"), 3: ("ミッ", "カ"), 4: ("ヨッ", "カ"), 5: ("イツ", "カ"), 6: ("ムイ", "カ"),
+           7: ("ナノ", "カ"), 8: ("ヨウ", "カ"), 9: ("ココノ", "カ"), 10: ("トオ", "カ"), 14: ("ジュウヨッ", "カ"),
+           20: ("ハツ", "カ"), 24: ("ニジュウヨッ", "カ")},
+    "歳": {20: ("ハタ", "チ")},
+    "つ": {1: ("ヒト", "ツ"), 2: ("フタ", "ツ"), 3: ("ミッ", "ツ"), 4: ("ヨッ", "ツ"), 5: ("イツ", "ツ"),
+           6: ("ムッ", "ツ"), 7: ("ナナ", "ツ"), 8: ("ヤッ", "ツ"), 9: ("ココノ", "ツ")},
+    "native": {2: ("フタ", None)},
+}
+WHOLE_FORMS = {"人": "", "人目": "メ", "日": "", "日間": "カン", "日目": "メ", "歳": "", "才": "", "つ": ""}
+
+
+def _place_readings(digits: List[int], kanji: bool = False) -> Tuple[bool, List[str]]:
+    """Whether these digits are read as one number, and one reading per digit: 2 5 ->
+    ニジュウ ゴ, 1 0 0 -> ヒャク and nothing, 2 0 0 0 0 -> ニマン and nothing. Read one
+    digit at a time: from 0 (0120, with 2 and 5 long: レイ イチ ニー レイ), over 16
+    digits, kanji without 〇 (三四 is 3 or 4)."""
+    n = len(digits)
+    if n == 1 or (kanji and 0 not in digits):
+        return n == 1, [DIGIT_READINGS[d] for d in digits]
+    if digits[0] == 0 or n > 16:
+        return False, [{2: "ニー", 5: "ゴー"}.get(d, DIGIT_READINGS[d]) for d in digits]
+    out = []
+    for i, d in enumerate(digits):
+        small = (n - 1 - i) % 4
+        out.append("" if d == 0 else ("" if d == 1 and small else DIGIT_READINGS[d]) + ("", "ジュウ", "ヒャク", "セン")[small])
+    for group in range(1, (n + 3) // 4):  # マン, オク, チョウ after the group's last digit that is not 0
+        nonzero = [i for i, d in enumerate(digits) if d and (n - 1 - i) // 4 == group]
+        if nonzero:
+            out[nonzero[-1]] += ("", "マン", "オク", "チョウ")[group]
+    return True, out
+
+
+def _number(text: str) -> Tuple[Optional[int], List[str]]:
+    """A number's value (None if read one digit at a time or with a decimal part) and one
+    reading per character: 25 -> 25, ニジュウ ゴ; 二十五 -> 25, ニ ジュウ ゴ; 1,000 -> 1000;
+    1.5 -> None, イチ テン ゴ."""
+    head, point, tail = (re.split(r"([.．])", text, maxsplit=1) + ["", ""])[:3]
+    readings: List[str] = []
+    total = section = 0  # section: the value since the last 万, 億 or 兆
+    run: Optional[int] = None  # the digits since the last place
+    whole = True
+    for part in re.findall(r"[十百千万億兆]|[^十百千万億兆]+", head):
+        if part in PLACES:
+            reading, size = PLACES[part]
+            readings.append(reading)
+            if size < 10 ** 4:
+                section += (1 if run is None else run) * size
+            else:
+                section, total = 0, total + ((section + (run or 0)) or 1) * size
+            run = None
+            continue
+        digits = [DIGIT_VALUES[c] for c in part if c in DIGIT_VALUES]
+        one, pieces = _place_readings(digits, kanji=not DIGIT.search(part))
+        whole = whole and one
+        pieces = iter(pieces)
+        readings.extend(next(pieces) if c in DIGIT_VALUES else "" for c in part)  # commas read nothing
+        run = int("".join(map(str, digits)))
+    if point:
+        readings.append("テン")
+        readings.extend(DIGIT_READINGS[DIGIT_VALUES[c]] for c in tail)
+    return (total + section + (run or 0) if whole and not point else None), readings
+
+
+def _numbers(words: List[str]) -> List[List[Tuple[int, int, int]]]:
+    """The numbers in the words, each as its (word, start, end) parts. Kanji are a number
+    in a word of numerals only, or before one of COUNTERS (一人, not 一緒). Digits the
+    aligner gave words of their own (2 5) are one number."""
+    found: List[List[Tuple[int, int, int]]] = []
+    for i, word in enumerate(words):
+        if NUMBER.fullmatch(word):
+            spans = [(0, len(word))]
+        elif DIGIT.search(word):
+            spans = [m.span() for m in NUMBER.finditer(word) if DIGIT.search(m.group())]
+        else:
+            m = NUMBER.match(word)
+            spans = [m.span()] if m and word[m.end():] in COUNTERS else []
+        for s, e in spans:
+            if found and s == 0:
+                j, _, end = found[-1][-1]
+                text = "".join(words[k][a:b] for k, a, b in found[-1]) + word[s:e]
+                if j == i - 1 and end == len(words[j]) and NUMBER.fullmatch(text) \
+                        and (DIGIT.search(text) or re.search(r"[〇十百千万億兆]", text)):
+                    found[-1].append((i, s, e))
+                    continue
+            found.append([(i, s, e)])
+    return found
+
+
+def mora_counts(words: List[str]) -> List[int]:
+    """Each word's morae: of its kana reading (kana_readings, count_mora); numbers and the
+    counters after them as above."""
+    counts = [count_mora(r) for r in kana_readings(words)]
+    parts: Dict[int, List[Tuple[int, int, int]]] = {}  # word: (start, end, morae) of its numbers
+    counter_morae: Dict[int, int] = {}  # word: the morae of the counter it is or ends in
+    for number in _numbers(words):
+        value, readings = _number("".join(words[i][s:e] for i, s, e in number))
+        i, _, e = number[-1]
+        same_word = e < len(words[i])
+        form = words[i][e:] if same_word else (words[i + 1] if i + 1 < len(words) else "")
+        if value is not None and form in COUNTERS:
+            counter, counter_reading = COUNTERS[form]
+            if value in WHOLE.get(counter, {}) and (form in WHOLE_FORMS or counter == "native"):
+                number_reading, part = WHOLE[counter][value]
+                readings = [number_reading] + [""] * (len(readings) - 1)
+                if part is not None:
+                    counter_reading = part + WHOLE_FORMS[form]
+                    counter_morae[i + 1] = _morae(counter_reading)
+            elif value % 10 in LAST_DIGIT.get(counter, {}):
+                readings[max(k for k, r in enumerate(readings) if r)] = LAST_DIGIT[counter][value % 10]
+            if same_word:  # the counter's reading, not the dictionary's of it alone (時 as トキ)
+                counter_morae.pop(i + 1, None)
+                counter_morae[i] = _morae(counter_reading)
+        at = 0
+        for k, s, e in number:
+            parts.setdefault(k, []).append((s, e, sum(_morae(r) for r in readings[at:at + e - s])))
+            at += e - s
+    for i, spans in parts.items():
+        word, morae, at, rest = words[i], 0, 0, []
+        for s, e, n in sorted(spans):
+            rest.append(word[at:s])
+            morae, at = morae + n, e
+        if i in counter_morae:  # ends in its number's counter
+            morae, at = morae + counter_morae.pop(i), len(word)
+        rest.append(word[at:])
+        morae += sum(_morae("".join(m.reading_form() for m in _tokenize(r))) for r in rest if r)
+        counts[i] = morae if NUMBER.fullmatch(word) else max(morae, 1)
+    for i, n in counter_morae.items():  # counters in words of their own
+        counts[i] = n
+    return counts
 
 
 @dataclass
@@ -172,8 +352,8 @@ class TextGridReaderJA:
             if (not is_pause) and (not is_filler_marker):
                 content_words.append(interval)
 
-        for word, reading in zip(content_words, kana_readings([w.text for w in content_words])):
-            word.mora_count = count_mora(reading)
+        for word, morae in zip(content_words, mora_counts([w.text for w in content_words])):
+            word.mora_count = morae
         self.total_mora = sum(w.mora_count for w in content_words)
 
         if content_words:
@@ -472,6 +652,14 @@ class CAFCalculatorJA:
             "clf_refined_pause_count": self.clf_stats.refined_pause_count,
         }
 
+    def tables(self, fname: str) -> Dict:
+        """This recording's rows of uf_words.csv, uf_pauses.csv and uf_clauses.csv (shared/uf_tables.py)."""
+        parts = self.mid_clause_pauses + self.end_clause_pauses + self.other_pauses
+        return uf_tables.rows(
+            fname, [(w.start, w.end, w.text, w.mora_count) for w in self.tg.words if not w.is_pause],
+            uf_tables.disfluent_spans(self.tg.tg), [(c.start, c.end, c.text) for c in self.clauses],
+            [(p.start, p.end) for p in self.pauses], [(p.start, p.end, p.location) for p in parts])
+
 
 def _load_selected_ids(file_list_json: Optional[str], file_list_key: Optional[str]) -> Optional[Set[str]]:
     if not file_list_json:
@@ -497,11 +685,17 @@ def process_textgrid(
     filepath: str,
     min_pause: float = 0.25,
     refiner: Optional[ClassifierPauseRefiner] = None,
+    tables: Optional[list] = None,
 ) -> Dict:
     tg_reader = TextGridReaderJA(filepath)
     calc = CAFCalculatorJA(tg_reader, min_pause=min_pause, refiner=refiner)
     out = calc.calculate_all()
     out["file"] = os.path.basename(filepath)
+    if tables is not None and "error" not in out:
+        try:
+            tables.append(calc.tables(out["file"]))
+        except Exception as e:  # the measures row stands; the recording is left out of the tables
+            print(f"Error in the tables of {out['file']}: {e}")
     return out
 
 
@@ -510,6 +704,7 @@ def process_directory(
     min_pause: float = 0.25,
     refiner: Optional[ClassifierPauseRefiner] = None,
     selected_ids: Optional[Set[str]] = None,
+    tables: Optional[list] = None,
 ) -> pd.DataFrame:
     files = [f for f in os.listdir(input_dir) if f.lower().endswith(".textgrid")]
     if selected_ids is not None:
@@ -518,7 +713,7 @@ def process_directory(
     for fname in sorted(files):
         path = os.path.join(input_dir, fname)
         try:
-            row = process_textgrid(path, min_pause=min_pause, refiner=refiner)
+            row = process_textgrid(path, min_pause=min_pause, refiner=refiner, tables=tables)
             rows.append(row)
             print(f"Processed: {fname}")
         except Exception as e:
@@ -536,7 +731,9 @@ def main():
     ap.add_argument("--file-list-json")
     ap.add_argument("--file-list-key")
     ap.add_argument("--output", "-o")
+    ap.add_argument("--tables-dir", help="Also write uf_words.csv, uf_pauses.csv and uf_clauses.csv here")
     args = ap.parse_args()
+    tables = [] if args.tables_dir else None
 
     refiner = ClassifierPauseRefiner(
         candidate_dir=args.candidate_dir,
@@ -546,13 +743,14 @@ def main():
     selected_ids = _load_selected_ids(args.file_list_json, args.file_list_key)
 
     if os.path.isfile(args.input):
-        df = pd.DataFrame([process_textgrid(args.input, min_pause=args.min_pause, refiner=refiner)])
+        df = pd.DataFrame([process_textgrid(args.input, min_pause=args.min_pause, refiner=refiner, tables=tables)])
     else:
         df = process_directory(
             args.input,
             min_pause=args.min_pause,
             refiner=refiner,
             selected_ids=selected_ids,
+            tables=tables,
         )
 
     if args.output:
@@ -561,6 +759,9 @@ def main():
         print(f"Saved: {args.output}")
     else:
         print(df.to_string(index=False))
+    if tables is not None:
+        uf_tables.write(Path(args.tables_dir), "morae", tables)
+        print(f"Saved: {args.tables_dir}")
 
     for c in ["clf_pause_candidates", "clf_pauses_split", "clf_predicted_speech_islands"]:
         if c in df.columns:

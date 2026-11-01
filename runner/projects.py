@@ -10,10 +10,14 @@ A project is a folder <projects folder>/<name>/:
 - sessions/<YYYY-MM-DD HH.MM>/: one analysis session, run_pipeline's output folder
   exactly as `./clausa run` makes it, plus recordings/ (links to the project's audio)
   and log.txt (runner/app.py).
-- uf_measures.csv: every done recording's row, in project order, each row
-  byte-identical to its row in the uf/uf_measures.csv of the session that last
-  analysed it (write_csv). A recording's measures do not depend on the other
-  recordings of its session, so rows from different sessions belong together.
+- uf_measures.csv: the measures of the last Compute (runner/measures.py), one
+  row per recording computed, in project order: from each recording's clauses
+  TextGrid in the session that last annotated it, as it was then. A session's own
+  uf/uf_measures.csv stays in the session folder; an unedited TextGrid gives the
+  same row byte for byte.
+- uf_words.csv, uf_pauses.csv, uf_clauses.csv: the words, pauses and clauses of
+  the same Compute, as the measures counted them (pipeline/shared/uf_tables.py).
+- compute_log.txt: the last Compute's log.
 
 A recording's id is its file stem: the pipeline names its outputs by stem, so ids
 are unique in a project (compared as the Mac's file system compares names) and a
@@ -44,6 +48,8 @@ from pathlib import Path
 SCHEMA = 1
 PROJECT_FILE = "project.json"
 CSV_NAME = "uf_measures.csv"
+TABLES = ("words", "pauses", "clauses")  # the tables beside it (pipeline/shared/uf_tables.py)
+COMPUTE_LOG = "compute_log.txt"
 AUDIO_DIR = "audio"
 SESSIONS_DIR = "sessions"
 LANGS = ("en", "ja")
@@ -119,6 +125,50 @@ def write_atomic(path: Path, data: bytes) -> None:
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
+
+
+class FileInUse(OSError):
+    """A file another program holds open (Excel on Windows), so it cannot be replaced: path."""
+
+    def __init__(self, path: Path):
+        super().__init__(f"{path.name} is open in another program: close it and try again")
+        self.path = path
+
+
+def write_files(files: dict[Path, bytes | None]) -> None:
+    """Replace these files together (None: remove it): all of them, or none if one is held open.
+
+    Each is written beside its target first; then every target is checked (Windows refuses
+    to replace a file another program has open, which Excel does), and only then replaced.
+    FileInUse names the first one held; nothing has changed then.
+    """
+    tmps = {}
+    try:
+        for path, data in files.items():
+            if data is None:
+                continue
+            tmp = path.with_name(f".{path.name}.tmp")
+            with open(tmp, "wb") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            tmps[path] = tmp
+        for path in files:
+            if path.exists():
+                try:
+                    with open(path, "r+b"):
+                        pass
+                except PermissionError:
+                    raise FileInUse(path) from None
+    except BaseException:
+        for tmp in tmps.values():
+            tmp.unlink(missing_ok=True)
+        raise
+    for path, data in files.items():
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            os.replace(tmps[path], path)
 
 
 def clone_file(src: Path, dst: Path) -> str:
@@ -222,19 +272,71 @@ def read_csv_rows(path: Path) -> tuple[bytes, dict[str, bytes]]:
     lines = path.read_bytes().splitlines(keepends=True)
     if not lines:
         return b"", {}
-    header = next(csv.reader(io.StringIO(lines[0].decode("utf-8"))), [])
+    header = next(csv.reader(io.StringIO(lines[0].decode("utf-8-sig", "replace"))), [])
     if "file" not in header:
         return lines[0], {}
     col = header.index("file")
     rows = {}
     for line in lines[1:]:
-        text = line.decode("utf-8").rstrip("\r\n")
+        text = line.decode("utf-8", "replace").rstrip("\r\n")  # a file saved by Excel in another encoding
         if not text:
             continue
         values = next(csv.reader(io.StringIO(text)), [])
         name = values[col] if col < len(values) else ""
         rows[name[:-len(".TextGrid")] if name.endswith(".TextGrid") else name] = line
     return lines[0], rows
+
+
+def table_path(measures_csv: Path, table: str) -> Path:
+    """Where a table goes beside a measures CSV: uf_measures.csv -> uf_words.csv, measures.csv ->
+    words.csv; a name without "measures" gets the table's name added (out.csv -> out_words.csv)."""
+    name = measures_csv.name
+    if "measures" in name:
+        return measures_csv.with_name(name.replace("measures", table, 1))
+    return measures_csv.with_name(f"{measures_csv.stem}_{table}{measures_csv.suffix}")
+
+
+def read_table_rows(path: Path) -> tuple[bytes, list[tuple[str, bytes]]]:
+    """A table (uf_words.csv ...) as (header line, [(id, row line)]), each line as its exact bytes.
+
+    Its first column, file, holds <id>.TextGrid; it starts with a BOM (utf-8-sig), which
+    stays in the header line.
+    """
+    lines = path.read_bytes().splitlines(keepends=True)
+    if not lines:
+        return b"", []
+    rows = []
+    for line in lines[1:]:
+        text = line.decode("utf-8", "replace").rstrip("\r\n")
+        if not text:
+            continue
+        name = next(csv.reader(io.StringIO(text)), [""])[0]
+        rows.append((name[:-len(".TextGrid")] if name.endswith(".TextGrid") else name, line))
+    return lines[0], rows
+
+
+PART_MIN_S = 1.0  # the shortest part to analyse
+
+
+def valid_part(part) -> list | None:
+    """[start, end] as two numbers with 0 <= start < end, else None (the whole recording)."""
+    try:
+        start, end = (float(x) for x in part)
+    except (TypeError, ValueError):
+        return None
+    return [start, end] if 0 <= start < end else None
+
+
+def fmt_part(part: list | None) -> str:
+    """0:12.5-1:50.0, as the window shows a part; "whole" for None."""
+    if not part:
+        return "whole"
+
+    def t(x: float) -> str:
+        x = round(x, 1)
+        h, m, s = int(x // 3600), int(x // 60 % 60), x % 60
+        return (f"{h}:{m:02d}:" if h else f"{m}:") + f"{s:04.1f}"
+    return f"{t(part[0])}-{t(part[1])}"
 
 
 @dataclass
@@ -253,6 +355,10 @@ class Recording:
     audio: str = ""  # its copy in audio/
     error_code: str | None = None  # the error as a code (err.<code> in runner/app_ui/strings.js) and its
     error_params: dict | None = None  # params, which the window says in its language; none from Clausa 1.0.1
+    compute: dict | None = None  # the last Compute of its measures (Clausa 1.0.3): status (done or failed), at,
+    # session and stamp (the TextGrid's [mtime_ns, size] then, None if missing), error, error_code, error_params
+    part: list | None = None  # [start, end] in seconds to analyse (Clausa 1.0.3); None: the whole recording
+    part_used: list | None = None  # the part its last session analysed (None: the whole recording)
     # not saved:
     progress: float = 0.0
     writing: set = field(default_factory=set)  # "words", "clauses": TextGrids being written
@@ -260,9 +366,9 @@ class Recording:
     before: dict | None = None  # its saved state when a session started (a Stop restores it)
 
     SAVED = ("id", "file", "source", "added", "status", "last_session", "error", "failed_stage", "duration_s", "audio",
-             "error_code", "error_params")
+             "error_code", "error_params", "compute", "part", "part_used")
     # what a session changes (a Stop puts it back)
-    OUTCOME = ("status", "last_session", "error", "failed_stage", "error_code", "error_params")
+    OUTCOME = ("status", "last_session", "error", "failed_stage", "error_code", "error_params", "part_used")
 
     @property
     def name(self) -> str:
@@ -284,6 +390,9 @@ class Recording:
             rec.status = "new"
         if not isinstance(rec.error_params, dict):
             rec.error_params = None
+        if not isinstance(rec.compute, dict):
+            rec.compute = None
+        rec.part, rec.part_used = valid_part(rec.part), valid_part(rec.part_used)
         return rec
 
     def saved_state(self) -> dict:
@@ -320,6 +429,17 @@ class Project:
     @property
     def csv_path(self) -> Path:
         return self.folder / CSV_NAME
+
+    def table_path(self, table: str) -> Path:
+        return table_path(self.csv_path, table)
+
+    @property
+    def compute_log(self) -> Path:
+        return self.folder / COMPUTE_LOG
+
+    def clauses_textgrid(self, r: Recording) -> Path | None:
+        """The TextGrid Compute reads: the clauses TextGrid of the session that last annotated it."""
+        return self.session_dir(r.last_session) / "clauses" / f"{r.id}.TextGrid" if r.last_session else None
 
     def audio_path(self, r: Recording) -> Path:
         return self.folder / AUDIO_DIR / r.audio
@@ -484,37 +604,24 @@ class Project:
             raise
         return dst
 
-    def write_csv(self) -> tuple[int, list[str]]:
-        """Regenerate uf_measures.csv; return (its number of rows, ids left out).
-
-        One row per done recording, in project order, each copied byte for byte from
-        the CSV of the session that last analysed it. Headers are never mixed: the
-        file takes the header of the newest of those sessions, and a done recording
-        whose session's CSV has another header (another version of Clausa) is left
-        out and returned, so the caller can ask for it to be analysed again. With no
-        row, the file is removed.
-        """
-        order = {s.name: i for i, s in enumerate(self.sessions)}
-        found, cache = [], {}
-        for r in self.recordings:
-            if r.status != "done" or not r.last_session:
+    def drop_rows(self, ids: set[str]) -> None:
+        """Take these recordings' rows out of uf_measures.csv and its tables (removed recordings);
+        a file with no row left is removed."""
+        files = {}
+        for path in (self.csv_path, *(self.table_path(t) for t in TABLES)):
+            try:
+                if path == self.csv_path:
+                    header, rows = read_csv_rows(path)
+                    rows = list(rows.items())
+                else:
+                    header, rows = read_table_rows(path)
+            except FileNotFoundError:
                 continue
-            path = self.session_dir(r.last_session) / "uf" / CSV_NAME
-            if path not in cache:
-                try:
-                    cache[path] = read_csv_rows(path)
-                except OSError:
-                    cache[path] = (b"", {})
-            h, lines = cache[path]
-            if r.id in lines:
-                found.append((r, h, lines[r.id]))
-        if not found:
-            self.csv_path.unlink(missing_ok=True)
-            return 0, []
-        newest = max(found, key=lambda f: (order.get(f[0].last_session, -1), f[0].last_session))[1]
-        rows = [line for r, h, line in found if h == newest]
-        write_atomic(self.csv_path, newest + b"".join(rows))
-        return len(rows), [r.id for r, h, line in found if h != newest]
+            if not ids & {rec_id for rec_id, _ in rows}:
+                continue
+            kept = [line for rec_id, line in rows if rec_id not in ids]
+            files[path] = header + b"".join(kept) if kept else None
+        write_files(files)
 
     def measures(self) -> dict[str, dict]:
         """{id: {measure: value}} of the done recordings, from their sessions' CSVs."""
@@ -541,8 +648,8 @@ MEASURES = ("AR", "SR", "MLR", "MCPR", "ECPR", "PR", "MCPD", "ECPD", "MPD")
 def read_measures(uf_csv: Path) -> dict:
     """uf_measures.csv: {id: {measure: value}} (its file column is <id>.TextGrid)."""
     rows = {}
-    try:
-        with uf_csv.open(encoding="utf-8", newline="") as f:
+    try:  # a CSV someone saved in Excel may be in another encoding: its numbers still read
+        with uf_csv.open(encoding="utf-8-sig", errors="replace", newline="") as f:
             for row in csv.DictReader(f):
                 name = row.get("file") or ""
                 rec_id = name[:-len(".TextGrid")] if name.endswith(".TextGrid") else name
@@ -553,7 +660,7 @@ def read_measures(uf_csv: Path) -> dict:
                     except (KeyError, TypeError, ValueError):
                         values[k] = None
                 rows[rec_id] = values
-    except OSError:
+    except (OSError, csv.Error):
         pass
     return rows
 

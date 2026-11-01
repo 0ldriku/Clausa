@@ -35,8 +35,13 @@ def main() -> None:
     def extract_tiers_tool_mora(self):
         extract_tiers(self)
         words = [w for w in self.words if not w.is_pause and w.text.lower() not in self.FILLER_MARKERS]
-        for word, reading in zip(words, tool.kana_readings([w.text for w in words])):
-            word.mora_count = tool.count_mora(reading)
+        texts = [w.text for w in words]
+        if hasattr(tool, "mora_counts"):
+            counts = tool.mora_counts(texts)
+        else:  # a calculator from before numbers were read by place
+            counts = [tool.count_mora(r) for r in tool.kana_readings(texts)]
+        for word, morae in zip(words, counts):
+            word.mora_count = morae
         self.total_mora = sum(w.mora_count for w in words)
 
     reference.TextGridReaderJA._extract_tiers = extract_tiers_tool_mora

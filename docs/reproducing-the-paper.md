@@ -42,7 +42,7 @@ pipeline. Paper mode is not in the app. Install the
 You need the 40 + 40 recordings from ALLSSTAR and I-JAS and the analysis
 repository, which holds the reference TextGrids. The article cut each automatic
 TextGrid to the reference speech span before finding clauses. `bench/` does
-the same; `./clausa run` does not. With a conda install:
+the same; `./clausa run` does not. From the command-line install:
 
 ```bash
 A=<analysis repository>; W=<work folder>

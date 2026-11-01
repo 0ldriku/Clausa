@@ -70,8 +70,9 @@ def main() -> None:
         src, dst = args.in_dir / f"{f}.TextGrid", args.out_dir / f"{f}.TextGrid"
         if not src.exists():
             continue
-        if f in windows:
-            s, e = windows[f]
+        key = f if f in windows else f.strip()  # the CSV's ids are stripped; a file name may end in a space
+        if key in windows:
+            s, e = windows[key]
             if e <= s:
                 raise SystemExit(f"Window end must be after start for {f}: {s} {e}")
             n = blank_outside(src, dst, s, e)

@@ -4,8 +4,9 @@ Exact package lists of the Linux image that `container/Containerfile` builds.
 `conda-<env>.txt` comes from `micromamba env export --explicit`; `pip-<env>.txt`
 lists only what pip installed on top.
 
-`./clausa setup` pins only top-level packages, so a new install can get newer
-dependencies. To rebuild an environment exactly:
+The image is built by setup's conda route, which pins only top-level packages,
+so a new build can get newer dependencies; `pixi.lock` has the three pipeline
+environments' packages for linux-64. To rebuild an environment exactly:
 
 ```bash
 micromamba create -n mfa --file conda-mfa.txt

@@ -106,20 +106,20 @@
     <div class="num">3</div>
     <div>
       <h3>Open <span class="name">Clausa.exe</span></h3>
-      <p>Click <b>New project</b>, name it and choose the language. Click <b>Add recordings</b>, then
-        <b>Start</b>.</p>
+      <p>Click <b>New project</b>, name it and choose the language. In <b>Annotate</b>, click <b>Add recordings</b>, then
+        <b>Start</b>. Check and correct the TextGrids in Praat, then click <b>Start</b> in <b>Compute</b> for the measures.</p>
     </div>
   </div>
 
   <h2>Results</h2>
   <p>Each project is a folder in <span class="path">Documents\Clausa projects\</span>, or in the folder chosen in <b>Settings</b> › <b>Change folder…</b>:</p>
   <table>
-    <tr><td><span class="path">uf_measures.csv</span></td><td>the measures, one row per recording</td></tr>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>the measures of the last Compute, one row per recording</td></tr>
     <tr><td><span class="path">audio\</span></td><td>copies of the recordings</td></tr>
     <tr><td><span class="path">sessions\</span></td><td>the TextGrids and the log of each analysis</td></tr>
   </table>
   <p>Open the TextGrids in <a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a>
-    to check the clauses and pauses.</p>
+    to check and correct the clauses and pauses; then compute the measures again in <b>Compute</b>.</p>
 
   <h2>Problems</h2>
   <p>Click <b>Log</b> at the bottom of the window to see the log. To report a problem, open an issue on
@@ -183,18 +183,18 @@
     <div class="num">3</div>
     <div>
       <h3><span class="name">Clausa.exe</span>を開く</h3>
-      <p><b>新規プロジェクト</b>をクリックし、名前を付けて録音の言語を選びます。<b>録音を追加</b>をクリックし、次に<b>開始</b>をクリックします。</p>
+      <p><b>新規プロジェクト</b>をクリックし、名前を付けて録音の言語を選びます。<b>アノテーション</b>で<b>録音を追加</b>をクリックし、次に<b>開始</b>をクリックします。TextGridをPraatで確認して修正したら、<b>計算</b>で<b>開始</b>をクリックすると指標が得られます。</p>
     </div>
   </div>
 
   <h2>結果</h2>
   <p>各プロジェクトは、「ドキュメント」フォルダー内の<span class="path">Clausa projects</span>（または<b>設定</b> › <b>フォルダーを変更…</b>で選んだフォルダー）の中にある1つのフォルダーです。</p>
   <table>
-    <tr><td><span class="path">uf_measures.csv</span></td><td>指標。録音1件につき1行</td></tr>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>前回の計算による指標。録音1件につき1行</td></tr>
     <tr><td><span class="path">audio\</span></td><td>録音のコピー</td></tr>
     <tr><td><span class="path">sessions\</span></td><td>各分析のTextGridとログ</td></tr>
   </table>
-  <p>TextGridを<a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a>で開くと、clauseとpauseを確認できます。</p>
+  <p>TextGridを<a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a>で開くと、clauseとpauseを確認して修正できます。修正したら、<b>計算</b>で指標を計算し直します。</p>
 
   <h2>問題が起きたら</h2>
   <p>ウィンドウ下部の<b>ログ</b>をクリックするとログを表示できます。問題を報告するには、<a href="https://github.com/0ldriku/Clausa/issues" style="color:var(--accent-fg)">GitHub</a>でissueを作成するか、<a href="mailto:oldriku@proton.me" style="color:var(--accent-fg)">oldriku@proton.me</a>にメールし、その分析のセッションフォルダーにある<span class="path">log.txt</span>を添付してください。Clausaが開かない場合は、Clausaフォルダーの<span class="path">logs</span>フォルダーを添付してください。ログには認識された単語が含まれるので、ログや録音は、共有に問題がない場合のみ送ってください。</p>
@@ -252,18 +252,18 @@
     <div class="num">3</div>
     <div>
       <h3>打开 <span class="name">Clausa.exe</span></h3>
-      <p>点击<b>新建项目</b>，为项目命名并选择录音语言。点击<b>添加录音</b>，再点击<b>开始</b>。</p>
+      <p>点击<b>新建项目</b>，为项目命名并选择录音语言。在<b>标注</b>中点击<b>添加录音</b>，再点击<b>开始</b>。在 Praat 中检查并修改 TextGrid 后，在<b>计算</b>中点击<b>开始</b>即可得到指标。</p>
     </div>
   </div>
 
   <h2>结果</h2>
   <p>每个项目是“文档”文件夹中 <span class="path">Clausa projects</span>（或在<b>设置</b> › <b>更改文件夹…</b>中选择的文件夹）里的一个文件夹：</p>
   <table>
-    <tr><td><span class="path">uf_measures.csv</span></td><td>指标，每个录音一行</td></tr>
+    <tr><td><span class="path">uf_measures.csv</span></td><td>上次计算的指标，每个录音一行</td></tr>
     <tr><td><span class="path">audio\</span></td><td>录音的副本</td></tr>
     <tr><td><span class="path">sessions\</span></td><td>每轮分析的 TextGrid 和日志</td></tr>
   </table>
-  <p>在 <a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a> 中打开 TextGrid，检查 clause 和 pause。</p>
+  <p>在 <a href="https://www.fon.hum.uva.nl/praat/" style="color:var(--accent-fg)">Praat</a> 中打开 TextGrid，检查并修改 clause 和 pause。修改后，在<b>计算</b>中重新计算指标。</p>
 
   <h2>问题</h2>
   <p>点击窗口底部的<b>日志</b>可查看日志。要报告问题，请在

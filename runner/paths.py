@@ -70,10 +70,18 @@ PROJECTS_DIR = Path(os.path.abspath(os.path.expanduser(
 RESULTS_DIR = Path(os.path.abspath(os.path.expanduser(
     os.environ.get("CLAUSA_RESULTS", _documents() / "Clausa results"))))
 
-# Conda environments created by `clausa setup`
+# The environments `clausa setup` creates
 ASR_ENV = os.environ.get("CLAUSA_ASR_ENV", "qwen3-asr")
 MFA_ENV = os.environ.get("CLAUSA_MFA_ENV", "mfa")
 JA_ENV = os.environ.get("CLAUSA_JA_ENV", "ja-electra310")
+# pixi (setup's default): pixi.toml and pixi.lock describe them; pixi installs
+# each one in PIXI_ENVS_DIR/<name> (.pixi/envs/, or where pixi's
+# detached-environments puts them). Empty: none (the container). Where none
+# is, conda's of the same name.
+PIXI_MANIFEST = REPO_ROOT / "pixi.toml"
+PIXI_LOCK = REPO_ROOT / "pixi.lock"
+_PIXI_ENVS = os.environ.get("CLAUSA_PIXI_ENVS", str(REPO_ROOT / ".pixi" / "envs"))
+PIXI_ENVS_DIR = Path(_PIXI_ENVS).resolve() if _PIXI_ENVS else None
 # Bundled environments (the portable app): a folder holding one environment
 # prefix per name above. When set, stages run those environments' own
 # executables and conda is not used (runner/envs.py).

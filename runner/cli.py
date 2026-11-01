@@ -16,10 +16,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = ap.add_subparsers(dest="command", required=True)
 
-    s = sub.add_parser("setup", help="create the conda environments and download the models")
+    s = sub.add_parser("setup", help="create the environments (pixi) and download the models")
     s.add_argument("--torch", choices=["cuda", "cpu"], help="torch build (default: cuda on Linux or Windows with an NVIDIA GPU, else cpu)")
     s.add_argument("--no-models", action="store_true", help="skip model downloads (they also download on first run)")
-    s.add_argument("--easyaligner", action="store_true", help="also create the easyaligner environment used by bench/")
+    s.add_argument("--conda", action="store_true",
+                   help="conda environments from the pins in runner/requirements/ instead of pixi.lock")
+    s.add_argument("--easyaligner", action="store_true",
+                   help="with --conda: also create the easyaligner environment used by bench/")
 
     sub.add_parser("doctor", help="check environments and models")
 
@@ -46,6 +49,12 @@ def main(argv: list[str] | None = None) -> int:
                    help="per-recording spans: CSV with header file_id,start,end (file_id = file name without "
                         "extension); unlisted files use --window if given, else the whole recording")
 
+    ms = sub.add_parser("measures", help="compute the measures again from a run's TextGrids, as they are now "
+                                         "(after you correct them in Praat)")
+    ms.add_argument("language", choices=["en", "ja"])
+    ms.add_argument("run_dir", type=Path, help="the output folder of `clausa run` (its clauses/ and islands/)")
+    ms.add_argument("-o", "--output", type=Path, help="the CSV to write (default: <run_dir>/measures.csv)")
+
     w = sub.add_parser("webui", help="browser interface for uploading recordings")
     w.add_argument("--host", default="127.0.0.1")
     w.add_argument("--port", type=int, default=7860)
@@ -56,13 +65,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "setup":
         if paths.ENVS_DIR is not None:
-            ap.error("setup creates conda environments; unset CLAUSA_ENVS_DIR (bundled environments) to use it")
+            ap.error("setup creates the environments; unset CLAUSA_ENVS_DIR (bundled environments) to use it")
+        if args.easyaligner and not args.conda:
+            ap.error("--easyaligner needs --conda: the easyaligner environment is not in pixi.toml")
         from runner.models import DownloadError
-        from runner.setup_envs import setup
+        from runner.setup_envs import SetupError, setup
         try:
-            setup(torch=args.torch, models=not args.no_models, easyaligner=args.easyaligner)
+            setup(torch=args.torch, models=not args.no_models, easyaligner=args.easyaligner, pixi=not args.conda)
         except DownloadError as exc:
             print(f"\nERROR: model download failed: {exc}\nRun ./clausa models to continue it.", file=sys.stderr)
+            return 1
+        except (FileNotFoundError, SetupError) as exc:  # no pixi, no conda for --conda, check_pixi
+            print(f"\nERROR: {exc}", file=sys.stderr)
             return 1
         return 0
     if args.command == "doctor":
@@ -88,6 +102,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"\nDone. Measures: {uf_csv}")
         return 0
+    if args.command == "measures":
+        from runner.measures import main as measures
+        try:
+            return measures(args.language, args.run_dir.resolve(), args.output and args.output.resolve())
+        except Exception as exc:
+            print(f"\nERROR: {exc}", file=sys.stderr)
+            return 1
     if args.command == "webui":
         import subprocess
         cmd = envs.in_env(paths.ASR_ENV, "python", "-m", "runner.web_ui", "--host", args.host, "--port", str(args.port))

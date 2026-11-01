@@ -17,3 +17,6 @@ models/filler_classifier/
 # The app's own settings and logs (runner/paths.py)
 settings.json
 logs/
+
+# pixi's environments (./clausa setup)
+.pixi/

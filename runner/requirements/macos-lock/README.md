@@ -1,7 +1,9 @@
 # macOS environment locks
 
 Exact package lists of the three environments on Apple Silicon, made like those
-in `container/locks/`.
+in `container/locks/`. `pixi.lock` has the same packages for osx-arm64,
+except that pip and setuptools in `ja-electra310` are conda's (pip upgraded
+them here). These lists are for setup's conda route.
 
 `wheels-qwen3-asr.txt` lists the macOS 14 builds of MLX, mlx-metal and orjson.
 The app needs them to run on macOS 14; pip would pick builds for the newest

@@ -1,14 +1,16 @@
-"""Conda environments and the process environment each pipeline stage runs in.
+"""The environments and the process environment each pipeline stage runs in.
 
 Bundled mode (paths.ENVS_DIR, set by CLAUSA_ENVS_DIR): the environments are
-folders inside the portable app. With conda (the regular install and the
-container), conda is asked once per process where each environment is
-(env_prefix). Either way every command then runs the environment's own
-executable directly, with the folders conda activation would put first on PATH
-and CONDA_PREFIX (env_vars): `conda run` cost 1-3 s per command, which the
-pipeline runs a dozen of. Setup still installs through conda (in_env's
-via_conda), and CLAUSA_CONDA_RUN=1 makes every command go through `conda run`
-again.
+folders inside the portable app. The regular install's are pixi's, in
+paths.PIXI_ENVS_DIR (pixi_prefix); the app builders pack these. Without them,
+conda's (setup's conda route, and the container, which sets CLAUSA_PIXI_ENVS
+empty): conda is asked once per process where each environment is
+(env_prefix). Every command then runs the environment's own executable
+directly, with the folders activation would put first on PATH and
+CONDA_PREFIX (env_vars): `conda run` cost 1-3 s per command, which the
+pipeline runs a dozen of. Setup's conda route still installs through conda
+(in_env's via_conda), and with conda's environments CLAUSA_CONDA_RUN=1 makes
+every command go through `conda run` again.
 """
 
 from __future__ import annotations
@@ -43,6 +45,41 @@ def conda_exe() -> str:
     raise FileNotFoundError("No conda found. Install Miniforge (https://conda-forge.org/download/) or micromamba.")
 
 
+def pixi_exe() -> str:
+    """Find pixi: on PATH, else where its installer puts it."""
+    hit = os.environ.get("PIXI_EXE") or shutil.which("pixi")
+    if hit and Path(hit).exists():
+        return hit
+    exe = "pixi.exe" if os.name == "nt" else "pixi"
+    for home in filter(None, (os.environ.get("PIXI_HOME"), Path.home() / ".pixi")):
+        if (Path(home) / "bin" / exe).exists():
+            return str(Path(home) / "bin" / exe)
+    raise FileNotFoundError("No pixi found. Install it (https://pixi.sh), or use ./clausa setup --conda")
+
+
+def pixi_prefix(env_name: str) -> Path | None:
+    """The pixi environment of that name, else its -cpu variant (qwen3-asr-cpu); None if neither is installed
+    (or CLAUSA_PIXI_ENVS is empty)."""
+    if paths.PIXI_ENVS_DIR is None:
+        return None
+    for name in (env_name, f"{env_name}-cpu"):
+        prefix = paths.PIXI_ENVS_DIR / name
+        if (prefix / "conda-meta").is_dir():
+            return prefix
+    return None
+
+
+def pixi_lock_mark(prefix: Path) -> Path:
+    """Where setup notes the sha256 of the pixi.lock it installed the environment from (doctor compares)."""
+    return prefix / "conda-meta" / "clausa-pixi-lock.sha256"
+
+
+def pixi_lock_sha256() -> str:
+    """pixi.lock's sha256 with LF line endings, so that a checkout with CRLF (git's autocrlf on
+    Windows) gives the same as any other."""
+    return hashlib.sha256(paths.PIXI_LOCK.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
 def _bin_dirs(prefix: Path) -> list[Path]:
     """The folders of an environment that conda activation puts first on PATH."""
     if os.name == "nt":
@@ -53,7 +90,12 @@ def _bin_dirs(prefix: Path) -> list[Path]:
 
 def _conda_run(env_name: str, cmd: tuple, live: bool = False) -> list[str]:
     """`conda run`, which holds the command's output until it ends unless live (micromamba streams it anyway)."""
-    exe = conda_exe()
+    try:
+        exe = conda_exe()
+    except FileNotFoundError:
+        where = f" in {paths.PIXI_ENVS_DIR}" if paths.PIXI_ENVS_DIR else ""
+        raise FileNotFoundError(f"environment {env_name} not found{where}, and no conda: "
+                                "run ./clausa setup") from None
     stream = ["--no-capture-output"] if live and Path(exe).stem.lower() == "conda" else []
     return [exe, "run", *stream, "-n", env_name, *map(str, cmd)]
 
@@ -63,7 +105,7 @@ def _direct_prefix(env_name: str) -> Path | None:
     if paths.ENVS_DIR is not None:
         return paths.ENVS_DIR / env_name
     if os.environ.get("CLAUSA_CONDA_RUN") == "1":
-        return None
+        return pixi_prefix(env_name)
     return env_prefix(env_name)
 
 
@@ -71,8 +113,9 @@ def in_env(env_name: str, *cmd: str | Path, live: bool = False, via_conda: bool 
     """Command line that runs cmd in an environment: the environment's own
     executable; run it with env_vars(env_name).
 
-    With conda, `conda run` instead when via_conda (setup's installs) or when
-    the environment is not found (the command then fails as conda reports).
+    `conda run` instead when via_conda (setup's conda route) or when the
+    environment is not found (the command then fails as conda reports, or with
+    FileNotFoundError without conda).
     """
     prefix = None if via_conda and paths.ENVS_DIR is None else _direct_prefix(env_name)
     if prefix is None:
@@ -107,11 +150,13 @@ def env_vars(env_name: str, base: dict[str, str] | None = None) -> dict[str, str
     return env
 
 
-def env_exists(env_name: str) -> bool:
-    cmd = in_env(env_name, "python", "-c", "print('ok')")
+def env_exists(env_name: str, via_conda: bool = False) -> bool:
+    """Whether the environment runs Python (via_conda: conda's environment of that name)."""
+    cmd = in_env(env_name, "python", "-c", "print('ok')", via_conda=via_conda)
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env_vars(env_name))
-    except OSError:  # bundled mode: no such environment folder
+        result = subprocess.run(cmd, capture_output=True, text=True,
+                                env=None if via_conda else env_vars(env_name))
+    except OSError:  # bundled mode: no such environment folder; no conda
         return False
     return result.returncode == 0
 
@@ -120,13 +165,20 @@ _PREFIXES: dict[str, Path] = {}
 
 
 def env_prefix(env_name: str) -> Path | None:
-    """The environment's folder (conda is asked once per process; None, not remembered, if it is missing)."""
+    """The environment's folder: bundled, pixi's, else conda's (conda is asked once per
+    process; None, not remembered, if it is missing)."""
     if paths.ENVS_DIR is not None:
         prefix = paths.ENVS_DIR / env_name
         return prefix if prefix.is_dir() else None
+    prefix = pixi_prefix(env_name)
+    if prefix is not None:
+        return prefix
     if env_name not in _PREFIXES:
-        result = subprocess.run(_conda_run(env_name, ("python", "-c", "import sys; print(sys.prefix)")),
-                                capture_output=True, text=True)
+        try:
+            cmd = _conda_run(env_name, ("python", "-c", "import sys; print(sys.prefix)"))
+        except FileNotFoundError:  # no conda either
+            return None
+        result = subprocess.run(cmd, capture_output=True, text=True)
         lines = result.stdout.strip().splitlines() if result.returncode == 0 else []
         if not lines:
             return None

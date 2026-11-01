@@ -48,9 +48,10 @@ English:
 
 Bold means clearly better: the bootstrap confidence intervals of the
 difference, by file and by speaker, both exclude 0, and the difference keeps
-its sign when any one file is left out. Nothing got clearly worse. One value
-is a little lower, Japanese ECPR's r (.836 to .818), well within chance; its
-ICC rose (.732 to .807).
+its sign when any one file is left out. Nothing got clearly worse. Some values
+are a little lower, all within chance; the largest drops are Japanese ECPR's r
+(.836 to .818; its ICC rose, .732 to .807) and English MCPR's ICC (.964 to
+.953).
 
 ## What changed
 

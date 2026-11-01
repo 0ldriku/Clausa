@@ -35,9 +35,11 @@ Runs in the ASR environment, which has pywebview (cli.py starts it there).
 
 from __future__ import annotations
 
+import csv
 import importlib.metadata
 import importlib.util
 import inspect
+import io
 import json
 import os
 import platform
@@ -45,6 +47,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -54,11 +57,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from runner import __version__, paths
+from runner import __version__, envs, paths
 from runner.awake import keep_awake
-from runner.projects import (AUDIO_DIR, CSV_NAME, PROJECT_FILE, Earlier, Project, ProjectError, Recording, Session,
-                             DATED_FOLDER, audio_duration, earlier_analyses, list_projects, now_iso, read_measures,
-                             trash)
+from runner.projects import (AUDIO_DIR, CSV_NAME, PART_MIN_S, PROJECT_FILE, TABLES, Earlier, Project, ProjectError,
+                             Recording, Session, DATED_FOLDER, FileInUse, audio_duration, earlier_analyses, fmt_part,
+                             list_projects, name_key, now_iso, read_measures, table_path, trash, valid_part)
 from runner.run import (AUDIO_EXTS, DECODE_EXTS, GPU_MEMORY, GPU_MEMORY_ERROR, MODES, STAGES, GpuOutOfMemory,
                         Stopped, run_pipeline)
 
@@ -83,6 +86,7 @@ NATIVE = {
         "windows.fileFilter.allFiles": "All files",
         "app.audio_files": "Audio files",
         "app.all_files": "All files",
+        "app.csv_files": "CSV files",
         "app.log_name": "Clausa log {date}",
     },
     "ja": {
@@ -93,6 +97,7 @@ NATIVE = {
         "windows.fileFilter.allFiles": "すべてのファイル",
         "app.audio_files": "音声ファイル",
         "app.all_files": "すべてのファイル",
+        "app.csv_files": "CSVファイル",
         "app.log_name": "Clausaログ {date}",
     },
     "zh-CN": {
@@ -103,6 +108,7 @@ NATIVE = {
         "windows.fileFilter.allFiles": "所有文件",
         "app.audio_files": "音频文件",
         "app.all_files": "所有文件",
+        "app.csv_files": "CSV 文件",
         "app.log_name": "Clausa 日志 {date}",
     },
 }
@@ -179,12 +185,6 @@ RUN_DEFAULTS = {k: p.default for k, p in inspect.signature(run_pipeline).paramet
 MODE = MODES[RUN_DEFAULTS["paper_compat"]]  # the default mode: the app runs with run_pipeline's defaults
 PACKAGES = ("mlx", "mlx-qwen3-asr", "qwen-asr", "torch", "transformers", "spacy", "pywebview")
 _ERROR_LINE = re.compile(r"ERROR|FAILED|Traceback|Error processing|Exception")
-
-
-def short_version(version: str = __version__) -> str:
-    """'1.1.0' (or '1.1.0.dev0') -> '1.1', as the status bar shows it."""
-    m = re.match(r"(\d+)\.(\d+)", version)
-    return f"{m[1]}.{m[2]}" if m else version
 
 
 def home_short(path: Path) -> str:
@@ -391,6 +391,7 @@ def windows_app_id(app_id: str) -> None:
 
 
 APPEARANCES = ("system", "light", "dark")  # Settings › Appearance; system: the system's light or dark
+MODES_UI = ("annotate", "compute")  # the sidebar's tabs: Start annotates, or computes the measures from the TextGrids
 LIGHT_BG, DARK_BG = "#fcfcfc", "#0c0c0c"  # the window before the page paints (app.css: gray-1 of each theme)
 
 
@@ -677,6 +678,46 @@ class Run:
     actual_s: float = 0.0
     expected_s: float = 0.0
     eta: float | None = None  # seconds left, renewed by Api._estimate
+    parts_csv: Path | None = None  # the session's parts.csv (file_id,start,end) when a recording has a part
+
+
+@dataclass
+class ComputeJob:
+    """A Compute: the measures of a project's annotated recordings from their TextGrids (runner/measures.py)."""
+    project: Project
+    ids: list  # in project order
+    stamps: dict  # id -> its TextGrid's stamp when the job started (_stamp)
+    before: dict  # id -> Recording.compute before the job (a Stop or a failure puts it back)
+    stop: threading.Event = field(default_factory=threading.Event)
+    status: str = "running"  # running, stopping, done, stopped or failed
+    started: float = field(default_factory=time.monotonic)
+    started_at: str = field(default_factory=lambda: datetime.now().strftime("%H:%M"))
+    ended: float | None = None
+    finished: dict = field(default_factory=dict)  # id -> None or the measures.Problem, as each ends
+
+
+PLAY_PREFIX = "clausa_play_"
+
+
+def _sweep_play_files(age_s: float = 3600) -> None:
+    """Remove clips of Play the part an earlier app left in the temp folder (a crash, Windows still
+    holding one), older than age_s."""
+    now = time.time()
+    for f in Path(tempfile.gettempdir()).glob(f"{PLAY_PREFIX}*.wav"):
+        try:
+            if now - f.stat().st_mtime > age_s:
+                f.unlink()
+        except OSError:
+            pass
+
+
+def _stamp(path: Path | None) -> list | None:
+    """A TextGrid's [mtime_ns, size], to tell whether it changed since it was computed; None if missing."""
+    try:
+        st = path.stat()
+    except (OSError, AttributeError):
+        return None
+    return [st.st_mtime_ns, st.st_size]
 
 
 class Api:
@@ -698,6 +739,13 @@ class Api:
         self._adding = threading.Lock()  # one add at a time: ids are checked before the files are copied
         self._run: Run | None = None
         self._thread: threading.Thread | None = None
+        self._job: ComputeJob | None = None
+        self._job_thread: threading.Thread | None = None
+        self._csv_cache: dict = {}  # project folder -> (the CSV's stamp, its measures)
+        self._waves: dict = {}  # (audio path, its stamp) -> wave(); the last few
+        self._player = None  # runner.audio.Player, once a part is played
+        self._play_files: list[Path] = []  # the clips played; each removed once it is no longer open
+        _sweep_play_files()
         self._window = None
         self._connected = False
         self._settings = self._load_settings()
@@ -707,6 +755,8 @@ class Api:
         self._native_language = self._ui_language  # the native parts' (NATIVE), fixed at start
         look = self._settings.get("appearance")
         self._appearance = look if look in APPEARANCES else "system"
+        mode = self._settings.get("mode")
+        self._mode = mode if mode in MODES_UI else "annotate"
         saved = self._settings.get("projects_dir")
         self._root = Path(saved) if isinstance(saved, str) and os.path.isabs(saved) else paths.PROJECTS_DIR
         self._projects: list[Project] = []
@@ -740,22 +790,27 @@ class Api:
                            "dir": str(view.folder), "created": view.created,
                            "sessions": sum(s.outcome in ("done", "failed") for s in view.sessions),
                            "last_session": self._last_session(view),
-                           "csv": view.csv_path.exists()}
-                recs = [self._rec_state(r, view) for r in view.recordings]
+                           "csv": view.csv_path.exists(),
+                           "tables": [t for t in TABLES if view.table_path(t).exists()],
+                           "computed": self._computed_at(view)}
+                values = self._csv_measures(view)
+                recs = [self._rec_state(r, view, values=values) for r in view.recordings]
             elif kind == "earlier":
                 project = {"id": view.id, "name": view.dir.name, "language": view.language or "en", "kind": "earlier",
                            "dir": str(view.dir), "created": "", "sessions": 1,
                            "last_session": self._folder_time(view.dir.name),
-                           "csv": (view.dir / "uf" / CSV_NAME).exists()}
+                           "csv": (view.dir / "uf" / CSV_NAME).exists(),
+                           "tables": [t for t in TABLES if table_path(view.dir / "uf" / CSV_NAME, t).exists()],
+                           "computed": None}
                 recs = [self._rec_state(r, None, view.dir) for r in self._earlier_rows(view)]
             else:
                 project, recs = None, []
             return {
-                "app": {"version": short_version(), "version_full": __version__,
+                "app": {"version": __version__, "version_full": __version__,
                         "device": DEVICES.get(self._device, ""), "device_key": self._device,
                         "sep": os.sep, "trash": TRASH, "trash_key": TRASH_KEY,
                         "ui_language": self._ui_language, "ui_language_setting": self._ui_setting,
-                        "appearance": self._appearance},
+                        "appearance": self._appearance, "mode": self._mode},
                 "settings": {"projects_dir": str(self._root), "projects_dir_short": home_short(self._root)},
                 "projects": [self._project_item(p) for p in self._projects],
                 "earlier": [{"id": e.id, "name": e.dir.name, "language": e.language, "count": len(e.files)}
@@ -763,6 +818,7 @@ class Api:
                 "project": project,
                 "recordings": recs,
                 "run": self._run_state(),
+                "job": self._job_state(),
                 "log": {"path": self._last_log(kind, view),  # the shown project's (also while it runs)
                         "lines": self._log.snapshot()},
                 "notice": dict(self._notice),
@@ -771,9 +827,10 @@ class Api:
     def _project_item(self, p: Project) -> dict:
         run = self._run
         running = run is not None and run.status in ("running", "stopping") and run.project is p
+        computing = self._job is not None and self._job.status in ("running", "stopping") and self._job.project is p
         return {"id": p.id, "name": p.name, "language": p.language, "count": len(p.recordings),
                 "failed": sum(r.status == "failed" for r in p.recordings),
-                "status": "running" if running else "idle",
+                "status": "running" if running else "computing" if computing else "idle",
                 "progress": round(self._session_pct(run), 1) if running else 0}
 
     def _run_state(self) -> dict:
@@ -811,8 +868,52 @@ class Api:
             "total": len(run.recs),
         }
 
-    def _rec_state(self, r: Recording, project: Project | None, folder: Path | None = None) -> dict:
-        """A row. folder: the run folder of an earlier analysis (project None)."""
+    def _job_state(self) -> dict:
+        job = self._job
+        if job is None:
+            return {"status": "idle", "project_id": None, "total": 0, "done_count": 0, "failed_count": 0,
+                    "ended_count": 0, "elapsed_s": 0, "started": ""}
+        return {"status": job.status, "project_id": job.project.id, "total": len(job.ids),
+                "done_count": sum(v is None for v in job.finished.values()),
+                "failed_count": sum(v is not None for v in job.finished.values()),
+                "ended_count": len(job.finished), "started": job.started_at,
+                "elapsed_s": round((job.ended or time.monotonic()) - job.started, 1)}
+
+    def _compute_state(self, r: Recording, p: Project) -> dict:
+        """A recording in Compute: computing, not_annotated, ready (never computed, or its TextGrid or
+        session changed since), computed or failed (with the error)."""
+        job = self._job
+        if job is not None and job.status in ("running", "stopping") and job.project is p and r.id in job.ids:
+            if r.id not in job.finished:
+                return {"status": "computing"}
+        if r.status != "done" or not r.last_session:
+            return {"status": "not_annotated"}
+        c = r.compute or {}
+        if c.get("session") != r.last_session or c.get("stamp") != _stamp(p.clauses_textgrid(r)):
+            return {"status": "ready"}
+        if c.get("status") == "failed":
+            return {"status": "failed", "error": c.get("error"), "error_code": c.get("error_code"),
+                    "error_params": c.get("error_params")}
+        return {"status": "computed", "at": c.get("at")}
+
+    def _csv_measures(self, p: Project) -> dict:
+        """{id: {measure: value}} from the project's CSV, read again only when it changes."""
+        stamp = _stamp(p.csv_path)
+        cached = self._csv_cache.get(p.folder)
+        if cached is None or cached[0] != stamp:
+            cached = (stamp, read_measures(p.csv_path) if stamp else {})
+            self._csv_cache[p.folder] = cached
+        return cached[1]
+
+    @staticmethod
+    def _computed_at(p: Project) -> str | None:
+        times = [r.compute.get("at") for r in p.recordings if r.compute and r.compute.get("at")]
+        return max(times) if times else None
+
+    def _rec_state(self, r: Recording, project: Project | None, folder: Path | None = None,
+                   values: dict | None = None) -> dict:
+        """A row. folder: the run folder of an earlier analysis (project None). values: the project's
+        CSV (_csv_measures): a recording's measures are shown while its last Compute holds."""
         run = self._run
         in_run = run is not None and project is not None and run.project is project and run.recs.get(r.id) is r \
             and run.status in ("running", "stopping")
@@ -821,7 +922,7 @@ class Api:
         if session is not None and r.status != "new":
             words = session / "asr" / "textgrids_clean" / f"{r.id}.TextGrid"
             clauses = session / "clauses" / f"{r.id}.TextGrid"
-            for kind, label, path in (("words", "Words TextGrid", words), ("clauses", "Clauses TextGrid", clauses)):
+            for kind, label, path in (("clauses", "Clauses TextGrid", clauses), ("words", "Words TextGrid", words)):
                 exists = path.exists()
                 files.append({"label": label, "label_kind": kind, "path": str(path), "exists": exists, "kind": "file"})
                 textgrids[kind] = "wip" if kind in r.writing else "yes" if exists else "no"
@@ -831,13 +932,28 @@ class Api:
         analysed = None
         if r.status in ("done", "failed") and session is not None:
             analysed = self._session_time(project, session.name)
+        if project is not None:
+            compute = self._compute_state(r, project)
+            measures = (values or {}).get(r.id) if compute["status"] == "computed" else None
+        else:  # an earlier analysis: its own CSV, read-only
+            measures = r.measures if r.status == "done" else None
+            compute = {"status": "computed" if measures else "not_annotated"}
         return {"id": r.id, "name": r.name, "duration_s": r.duration_s, "status": r.status,
                 "progress": round(r.progress, 1) if r.status != "done" else 100.0, "textgrids": textgrids,
-                "measures": r.measures if r.status == "done" else None, "files": files, "error": r.error,
+                "measures": measures, "compute": compute, "files": files, "error": r.error,
                 "error_code": r.error_code, "error_params": r.error_params, "failed_stage": r.failed_stage,
-                "failed_stage_key": STEP_OF.get(r.failed_stage), "added": r.added, "analysed": analysed}
+                "failed_stage_key": STEP_OF.get(r.failed_stage), "added": r.added, "analysed": analysed,
+                "part": r.part, "part_used": r.part_used}
 
     # ---------- settings ----------
+
+    def set_mode(self, code: str) -> dict:
+        """The sidebar's tab: annotate or compute (kept in the settings)."""
+        with self._lock:
+            if code in MODES_UI and code != self._mode:
+                self._mode = self._settings["mode"] = code
+                self._save_settings()
+            return {"mode": self._mode}
 
     def set_appearance(self, code: str) -> dict:
         """Settings › Appearance (APPEARANCES), remembered (settings.json's appearance). The page
@@ -909,7 +1025,7 @@ class Api:
             p = self._project(project_id)
             if p is None:
                 return not_done(msg("project.gone", "That project is not in the list any more."))
-            if self._busy() and self._run.project is p:
+            if self._active_project() is p:
                 return not_done(msg("project.rename_busy",
                                     "The project is being analysed: rename it when the session has ended."))
             old = p.name
@@ -931,7 +1047,7 @@ class Api:
             p = self._project(project_id)
             if p is None:
                 return not_done(msg("project.gone", "That project is not in the list any more."))
-            if self._busy() and self._run.project is p:
+            if self._active_project() is p:
                 return not_done(msg("project.delete_busy", "The project is being analysed: stop the session first."))
             try:
                 moved = trash(p.folder)
@@ -1049,16 +1165,28 @@ class Api:
     def remove(self, rec_id: str) -> bool:
         """Remove a recording from the project shown: its row, its CSV row and its copy (to the Trash).
 
-        Not while it is part of a session that runs. Its earlier sessions' files stay.
+        Not while it is part of a session that runs, nor while a Compute of its project runs (it
+        rewrites the CSV). Its earlier sessions' files stay.
         """
         with self._lock:
             kind, p = self._view()
             r = p.find(str(rec_id)) if kind == "project" else None
-            if r is None or (self._busy() and self._run.project is p and r.id in self._run.recs):
+            run, job = self._run, self._job
+            in_run = run is not None and run.status in ("running", "stopping") and run.recs.get(r.id) is r if r else False
+            computing = job is not None and job.status in ("running", "stopping") and job.project is p
+            if r is None or in_run or computing:
                 return False
             p.recordings.remove(r)
             self._save_project(p)
-            self._write_csv(p)
+            try:
+                p.drop_rows({r.id})
+            except FileInUse as exc:
+                self._log.write(f"Its rows stay in the project's CSV files: {exc}", "error")
+                self._note(msg("notice.file_in_use_rows", f"{exc.path.name} is open in another program, so the "
+                               "recording's rows stay in the project's CSV files until the next Compute.",
+                               file=exc.path.name))
+            except (OSError, ValueError) as exc:
+                self._log.write(f"Could not write the project's CSV files: {exc}", "error")
             copy = p.audio_path(r)
         self._log.write(f"Removed from {p.name}: {r.name}")
         if r.audio and copy.is_file():  # never the audio folder itself
@@ -1140,7 +1268,6 @@ class Api:
                 else:
                     self._note(msg("notice.unreadable_one" if unreadable else "notice.missing_one",
                                    f"{names[0]}: {what}, so it was not analysed", name=names[0]))
-                self._write_csv(p)
             recs = [r for r in recs if r.id not in bad]
             if not recs:
                 self._save_project(p)
@@ -1161,6 +1288,7 @@ class Api:
             for r in recs:
                 r.before = r.saved_state()
                 r.status, r.progress, r.measures, r.failed_stage = "running", 0.0, None, None
+                r.part_used = list(r.part) if r.part else None
                 set_error(r)
                 r.writing.clear()
             run.session = Session(session_dir.name, now_iso(), list(run.recs))
@@ -1169,7 +1297,15 @@ class Api:
             previous, self._run = self._run, run
         try:
             p.link_recordings(session_dir, list(run.recs.values()))
+            # A part to analyse: the runner's windows CSV (shared/apply_window.py); the others whole.
+            parts = [(r.id, *r.part) for r in run.recs.values() if r.part]
+            if parts:
+                buf = io.StringIO()
+                csv.writer(buf, lineterminator="\n").writerows([("file_id", "start", "end"), *parts])
+                run.parts_csv = session_dir / "parts.csv"
+                run.parts_csv.write_text(buf.getvalue(), encoding="utf-8")
         except OSError as exc:
+            (session_dir / "parts.csv").unlink(missing_ok=True)
             for folder in (session_dir / "recordings", session_dir):  # only if nothing was written there
                 try:
                     folder.rmdir()
@@ -1202,8 +1338,16 @@ class Api:
         return True
 
     def stop(self) -> bool:
-        """Stop the session: the running stage ends at once; unfinished recordings go back to how they were."""
+        """Stop the session: the running stage ends at once; unfinished recordings go back to how they were.
+        A Compute stops the same way; the recordings and the CSV stay as they were before it."""
         with self._lock:
+            job = self._job
+            if job is not None and job.status == "running":
+                job.status = "stopping"
+                self._log.stopping = True
+                job.stop.set()
+                self._log.write("Stopping…")
+                return True
             run = self._run
             if run is None or run.status != "running":
                 return False
@@ -1212,6 +1356,94 @@ class Api:
             run.stop.set()
         self._log.write("Stopping…")
         return True
+
+    def compute(self) -> bool:
+        """Compute the measures of every annotated recording of the project shown from its clauses
+        TextGrid as it is now (runner/measures.py) into the project's CSV: True once it runs."""
+        with self._lock:
+            kind, p = self._view()
+            if kind != "project" or self._busy():
+                return False
+            recs = [r for r in p.recordings if r.status == "done" and r.last_session]
+            if not recs:
+                return False
+            job = ComputeJob(p, [r.id for r in recs], {r.id: _stamp(p.clauses_textgrid(r)) for r in recs},
+                             {r.id: r.compute for r in recs})
+            order = [s.name for s in p.sessions]
+            groups = {}
+            for r in recs:
+                groups.setdefault(r.last_session, []).append(r.id)
+            groups = [(p.session_dir(name), ids) for name, ids in
+                      sorted(groups.items(), key=lambda g: (order.index(g[0]) if g[0] in order else -1, g[0]))]
+            self._job = job
+        self._log.start_run(p.compute_log, [
+            f"Clausa {__version__}" + (f" (code {code_version()})" if code_version() else ""),
+            f"Started: {datetime.now().astimezone():%Y-%m-%d %H:%M:%S %z}",
+            f"Project: {p.name} ({p.folder})",
+            f"Language: {LANGS[p.language]} ({p.language})",
+            f"Compute: the measures of {len(recs)} recording{'s' if len(recs) != 1 else ''} from their clauses "
+            f"TextGrids, into {p.csv_path}",
+        ])
+        with self._lock:
+            if job.status == "stopping":
+                self._log.stopping = True
+            self._job_thread = threading.Thread(target=self._compute_work, args=(job, groups), name="clausa-compute",
+                                                daemon=True)
+            self._job_thread.start()
+        return True
+
+    def _compute_work(self, job: ComputeJob, groups: list) -> None:
+        from runner.measures import compute
+        p, status = job.project, "done"
+
+        def ended(rec_id: str, problem) -> None:
+            with self._lock:
+                job.finished[rec_id] = problem
+            name = p.find(rec_id).name if p.find(rec_id) else rec_id
+            self._log.write(f"{name}: " + ("computed" if problem is None else problem.text),
+                            "info" if problem is None else "error")
+        try:
+            compute(p.language, groups, p.csv_path, stop=job.stop, on_file=ended, order=job.ids)
+        except Stopped:
+            status = "stopped"
+        except FileInUse as exc:  # nothing was replaced
+            status = "failed"
+            self._log.write(str(exc), "error")
+            self._note(msg("notice.file_in_use", f"{exc.path.name} is open in another program. Close it, then "
+                           "Start again.", file=exc.path.name))
+        except Exception as exc:
+            status = "failed"
+            self._log.write(traceback.format_exc().rstrip(), "error")
+            self._note(msg("notice.compute_failed", f"The measures could not be computed: {exc}", error=str(exc)))
+        with self._lock:
+            job.ended = time.monotonic()
+            elapsed = fmt_seconds(job.ended - job.started)
+            if status == "done":
+                at = now_iso()
+                for rec_id in job.ids:
+                    r = p.find(rec_id)
+                    if r is None:
+                        continue
+                    problem = job.finished.get(rec_id)
+                    r.compute = {"status": "done" if problem is None else "failed", "at": at,
+                                 "session": r.last_session, "stamp": job.stamps.get(rec_id)}
+                    if problem is not None:
+                        r.compute.update(error=problem.text, error_code=problem.code, error_params=problem.params)
+                self._save_project(p)
+                done = sum(v is None for v in job.finished.values())
+                failed = len(job.ids) - done
+                self._log.write(f"Result: {done} of {len(job.ids)} computed" + (f", {failed} failed" if failed else "")
+                                + f" · {elapsed} · {p.csv_path if done else 'no CSV'}", "ok" if not failed else "error")
+            else:  # the CSV is written only at the end: as it was, and so are the recordings
+                for rec_id, before in job.before.items():
+                    r = p.find(rec_id)
+                    if r is not None:
+                        r.compute = before
+                self._log.write(f"Result: {status} · {elapsed}; the measures stay as they were")
+            job.status = status
+            if self._job is job:
+                self._log.end_run()
+                self._log.stopping = False
 
     def _work(self, run: Run) -> None:
         """The session's thread: run_pipeline, then the outcome for each recording."""
@@ -1222,7 +1454,7 @@ class Api:
                 if awake is False:
                     self._log.write("Could not ask the system to stay awake: it may go to sleep during the session")
                 run_pipeline(run.language, run.dir / "recordings", run.dir, device="auto",
-                             on_event=lambda e: self._on_event(run, e), stop=run.stop)
+                             windows_csv=run.parts_csv, on_event=lambda e: self._on_event(run, e), stop=run.stop)
         except Stopped:
             status = "stopped"
         except Exception as exc:  # a stage failed (CalledProcessError) or the run could not start
@@ -1486,11 +1718,9 @@ class Api:
             run.session.done = sum(r.status == "done" and r.last_session == run.dir.name for r in run.recs.values())
             run.session.failed = sum(r.status == "failed" and r.last_session == run.dir.name for r in run.recs.values())
         self._save_project(p)
-        rows = self._write_csv(p)
         if status == "done":
             self._log.write(f"Result: {'done' if not run.session.failed else 'done with failures'} · "
-                            f"{run.session.done} of {len(run.recs)} analysed · {elapsed} · "
-                            f"project measures: {p.csv_path if rows else 'none'} ({rows} row{'s' if rows != 1 else ''})")
+                            f"{run.session.done} of {len(run.recs)} annotated · {elapsed}")
         run.status = status
 
     @staticmethod
@@ -1522,15 +1752,227 @@ class Api:
         open_path(folder)
         return True
 
-    def open_csv(self) -> bool:
-        """Open the measures of the project shown (or of the earlier analysis) in the default app."""
+    def open_csv(self, table: str = "measures") -> bool:
+        """Show the measures CSV of the project shown (or of the earlier analysis) in its folder; with
+        table words, pauses or clauses, that table of the same Compute (or analysis). Shown, not opened:
+        a CSV open in Excel would stop the next Compute on Windows."""
+        if table != "measures" and table not in TABLES:
+            return False
         with self._lock:
             kind, view = self._view()
             path = view.csv_path if kind == "project" else view.dir / "uf" / CSV_NAME if kind == "earlier" else None
+        if path is not None and table != "measures":
+            path = table_path(path, table)
         if path is None or not path.exists():
             return False
-        open_path(path)
+        open_path(path, reveal=True)
         return True
+
+    # ---------- part to analyse ----------
+
+    def _part_rec(self, rec_id) -> tuple[Project | None, Recording | None]:
+        """The project shown, and its recording rec_id if its part can change now (not in the running session)."""
+        kind, p = self._view()
+        r = p.find(str(rec_id)) if kind == "project" else None
+        run = self._run
+        if r is not None and run is not None and run.project is p and run.recs.get(r.id) is r \
+                and run.status in ("running", "stopping"):
+            r = None
+        return (p if kind == "project" else None), r
+
+    @staticmethod
+    def _check_part(r: Recording, start, end) -> list:
+        """[start, end] in seconds to 0.01, at least PART_MIN_S long and inside the recording (an end past it
+        means its end); ProjectError if not."""
+        part, duration = valid_part([start, end]), r.duration_s
+        if part is not None and duration is not None:
+            part[1] = min(part[1], duration)
+        whole = fmt_part([0, duration]).split("-")[1] if duration else "?"
+        if part is None or part[0] >= part[1]:
+            raise ProjectError(f"The part must start before it ends, within 0:00.0-{whole}", "part.invalid", end=whole)
+        if part[1] - part[0] < PART_MIN_S:
+            raise ProjectError(f"The part must last at least {PART_MIN_S:g} s", "part.short", s=f"{PART_MIN_S:g}")
+        return [round(part[0], 2), round(part[1], 2)]
+
+    def set_part(self, rec_id: str, start=None, end=None) -> dict:
+        """Analyse only [start, end] (seconds) of a recording of the project shown from its next session
+        on, or (both None) all of it. {"ok": True, "part": ...}, or not_done."""
+        with self._lock:
+            p, r = self._part_rec(rec_id)
+            if r is None:
+                return not_done(msg("part.busy", "Its part cannot change while it is being analysed"))
+            try:
+                part = None if start is None and end is None else self._check_part(r, start, end)
+            except ProjectError as exc:
+                return not_done(as_message(exc))
+            if part != r.part:
+                r.part = part
+                self._save_project(p)
+                self._log.write(f"{r.name}: part to analyse {fmt_part(part)}", show=False)
+        return {"ok": True, "part": part}
+
+    def use_part_for_new(self, rec_id: str) -> dict:
+        """Give this recording's part to the project's other New recordings; one shorter than the part's
+        end keeps its own. {"ok": True, "n": recordings given it, "skipped": too short}."""
+        with self._lock:
+            p, r = self._part_rec(rec_id)
+            if r is None or not r.part:
+                return {"ok": False, "n": 0, "skipped": 0}
+            n = skipped = 0
+            for o in p.recordings:
+                if o is r or o.status != "new":
+                    continue
+                if o.duration_s is not None and r.part[1] > o.duration_s:
+                    skipped += 1
+                    continue
+                o.part, n = list(r.part), n + 1
+            if n:
+                self._save_project(p)
+                self._log.write(f"{n} more recording{'s' if n != 1 else ''} of {p.name}: part to analyse "
+                                f"{fmt_part(r.part)}" + (f" ({skipped} shorter left as they were)" if skipped else ""))
+        given = f"{n} more recording{'s' if n != 1 else ''} take{'s' if n == 1 else ''} this part"
+        self._note(msg("notice.part_given", given, n=n, skipped=skipped) if not skipped else
+                   msg("notice.part_given_skipped", f"{given} (too short for it: {skipped})", n=n,
+                       skipped=skipped))
+        return {"ok": True, "n": n, "skipped": skipped}
+
+    def import_parts(self) -> dict:
+        """Parts to analyse from a CSV with the columns file_id, start and end (seconds), as `./clausa run
+        --windows` reads it, for the recordings of the project shown it names (by file name, with or
+        without its extension). {"ok": True, "n": parts set, "skipped": rows not used}."""
+        import webview
+        if self._window is None:
+            return {"ok": False}
+        lang = self._native_language
+        chosen = self._window.create_file_dialog(webview.FileDialog.OPEN, allow_multiple=False,
+                                                 file_types=(native_filter(lang, "app.csv_files", "*.csv"),
+                                                             native_filter(lang, "app.all_files", "*.*")))
+        if not chosen:
+            return {"ok": False}
+        path = Path(chosen[0] if isinstance(chosen, (list, tuple)) else chosen)
+        try:
+            data = path.read_bytes()
+            try:
+                text = data.decode("utf-8-sig")
+            except UnicodeDecodeError:  # Excel's "CSV" on Windows is in the system's code page
+                import locale
+                text = data.decode(locale.getpreferredencoding(False))
+            rows = list(csv.DictReader(io.StringIO(text)))
+        except (OSError, UnicodeDecodeError, LookupError, csv.Error) as exc:
+            self._log.write(f"{path} could not be read: {exc}", "error")
+            self._note(msg("notice.parts_unreadable", f"{path.name} could not be read. Save it as CSV UTF-8 and "
+                           "import it again.", file=path.name))
+            return {"ok": False}
+        if not rows or not {"file_id", "start", "end"} <= set(rows[0]):
+            self._note(msg("notice.parts_columns", f"{path.name}: it needs the columns file_id, start and end",
+                           file=path.name))
+            return {"ok": False}
+        n = skipped = 0
+        with self._lock:
+            kind, project = self._view()
+            ids = {name_key(r.id): r.id for r in project.recordings} if kind == "project" else {}
+            for row in rows:
+                name = (row.get("file_id") or "").strip()
+                rec_id = ids.get(name_key(name)) or ids.get(name_key(Path(name).stem)) if name else None
+                p, r = self._part_rec(rec_id) if rec_id else (project, None)
+                try:
+                    part = self._check_part(r, float(row["start"]), float(row["end"])) if r is not None else None
+                except (ProjectError, TypeError, ValueError):
+                    part = None
+                if part is None:
+                    skipped += 1
+                    continue
+                r.part, n = part, n + 1
+            if n:
+                self._save_project(p)
+        self._log.write(f"Parts from {path}: {n} set" + (f", {skipped} rows not used (unknown file, a recording "
+                                                          "being analysed, or times outside it)" if skipped else ""))
+        self._note(msg("notice.parts_imported", f"Parts from {path.name}: {n} set", file=path.name, n=n)
+                   if not skipped else
+                   msg("notice.parts_imported_skipped", f"Parts from {path.name}: {n} set, {skipped} rows not used "
+                       "(the log says why)", file=path.name, n=n, skipped=skipped))
+        return {"ok": True, "n": n, "skipped": skipped}
+
+    def wave(self, rec_id: str) -> dict | None:
+        """A recording's waveform for Part to analyse: {"duration": s, "peaks": [0-1, ...]} (runner/audio.py);
+        None if it cannot be read."""
+        from runner import audio
+        with self._lock:
+            kind, p = self._view()
+            r = p.find(str(rec_id)) if kind == "project" else None
+            if r is None:
+                return None
+            path, duration, name = p.audio_path(r), r.duration_s, r.name
+        key = (str(path), tuple(_stamp(path) or ()))
+        with self._lock:
+            if key in self._waves:
+                return self._waves[key]
+        try:
+            duration = duration or audio_duration(path)
+            data = {"duration": duration, "peaks": audio.peaks(path, duration)}
+        except Exception as exc:
+            self._log.write(f"{name}: its waveform could not be read: {exc}", "error")
+            return None
+        with self._lock:
+            while len(self._waves) >= 20:
+                self._waves.pop(next(iter(self._waves)))
+            self._waves[key] = data
+        return data
+
+    PLAY_MAX_S = 600  # a longer part plays its first 10 minutes
+
+    def play_part(self, rec_id: str, start, end) -> dict:
+        """Play [start, end] of a recording of the project shown through the system (runner/audio.py):
+        {"ok": True, "length": seconds}."""
+        from runner import audio
+        part = valid_part([start, end])
+        with self._lock:
+            kind, p = self._view()
+            r = p.find(str(rec_id)) if kind == "project" else None
+            if r is None:
+                return {"ok": False}
+            if part is None:
+                return not_done(msg("part.invalid", "The part must start before it ends, within 0:00.0-"
+                                    + fmt_part([0, r.duration_s or 0]).split("-")[1],
+                                    end=fmt_part([0, r.duration_s or 0]).split("-")[1]))
+            path, name = p.audio_path(r), r.name
+        part[1] = min(part[1], part[0] + self.PLAY_MAX_S)
+        wav = None
+        try:
+            fd, name_ = tempfile.mkstemp(prefix=PLAY_PREFIX, suffix=".wav")
+            os.close(fd)
+            wav = Path(name_)
+            audio.clip(path, part[0], part[1], wav)  # outside the lock: it decodes
+            with self._lock:  # one player, one sound: a second Play replaces the first
+                if self._player is None:
+                    self._player = audio.Player()
+                self._play_files.append(wav)
+                self._player.play(wav)
+        except Exception as exc:
+            if wav is not None and wav not in self._play_files:
+                wav.unlink(missing_ok=True)
+            self._log.write(f"{name}: the part could not be played: {exc}", "error")
+            return not_done(msg("part.play_failed", f"The part could not be played: {exc}", error=str(exc)))
+        self._remove_play_files()
+        return {"ok": True, "length": part[1] - part[0]}
+
+    def stop_playing(self) -> bool:
+        with self._lock:
+            if self._player is not None:
+                self._player.stop()
+        self._remove_play_files()
+        return True
+
+    def _remove_play_files(self, keep_last: bool = True) -> None:
+        """Remove the clips played before the last (or all); one Windows still holds stays for the next try."""
+        with self._lock:
+            files = self._play_files[:-1] if keep_last and self._play_files else list(self._play_files)
+            for f in files:
+                try:
+                    f.unlink(missing_ok=True)
+                except OSError:  # Windows: still open
+                    continue
+                self._play_files.remove(f)
 
     def open_folder(self, rec_id: str) -> bool:
         """Open the session folder that holds a recording's latest results."""
@@ -1594,7 +2036,15 @@ class Api:
     # ---------- helpers ----------
 
     def _busy(self) -> bool:
-        return self._run is not None and self._run.status in ("running", "stopping")
+        """A session or a Compute runs (one at a time, whichever project)."""
+        return self._active_project() is not None
+
+    def _active_project(self) -> Project | None:
+        """The project a running session or Compute belongs to."""
+        for job in (self._run, self._job):
+            if job is not None and job.status in ("running", "stopping"):
+                return job.project
+        return None
 
     def _project(self, project_id: str) -> Project | None:
         return next((p for p in self._projects if p.id == str(project_id)), None)
@@ -1716,6 +2166,7 @@ class Api:
         r.last_session, r.error = before.get("last_session"), before.get("error")
         r.error_code, r.error_params = before.get("error_code"), before.get("error_params")
         r.failed_stage, r.measures = before.get("failed_stage"), before.get("measures")
+        r.part_used = before.get("part_used")
         r.progress = 100.0 if r.status == "done" else 0.0
         r.writing.clear()
         r.before = None
@@ -1726,30 +2177,6 @@ class Api:
         except OSError as exc:
             self._log.write(f"Could not save {p.folder / PROJECT_FILE}: {exc}", "error")
             self._note(msg("notice.save_failed", f"The project could not be saved: {exc}", error=str(exc)))
-
-    def _write_csv(self, p: Project) -> int:
-        """Regenerate the project's CSV; return its number of rows.
-
-        A done recording whose session's CSV has other columns than the newest (made by
-        another version of Clausa) is left out and marked failed, so that Start analyses it
-        again: one CSV never mixes headers.
-        """
-        try:
-            rows, other = p.write_csv()
-        except OSError as exc:
-            self._log.write(f"Could not write {p.csv_path}: {exc}", "error")
-            return 0
-        if other:
-            for rec_id in other:
-                r = p.find(rec_id)
-                r.status, r.measures, r.failed_stage = "failed", None, None
-                set_error(r, "other_version", "Its measures were made by another version of Clausa (their CSV has "
-                                              "other columns), so they are not in the project's CSV. Analyse it again.")
-            self._log.write(f"{p.name}: {len(other)} recording{'s' if len(other) != 1 else ''} left out of "
-                            f"{p.csv_path.name}, made by another version of Clausa (other columns): "
-                            f"{', '.join(other)}. Analyse {'them' if len(other) != 1 else 'it'} again.", "error")
-            self._save_project(p)
-        return rows
 
     @staticmethod
     def _folder_time(name: str) -> str | None:
@@ -1770,6 +2197,13 @@ class Api:
         return ended[-1].started if ended else None
 
     def _last_log(self, kind: str | None, view) -> str | None:
+        run, job = self._run, self._job
+        if kind == "project" and run is not None and run.project is view and run.status in ("running", "stopping"):
+            return str(run.dir / "log.txt")
+        if kind == "project" and job is not None and job.project is view and job.status in ("running", "stopping"):
+            return str(view.compute_log)
+        if kind == "project" and self._mode == "compute":
+            return str(view.compute_log) if view.compute_log.exists() else None
         if kind == "project" and view.sessions:
             path = view.session_dir(view.sessions[-1].name) / "log.txt"
             return str(path) if path.exists() else None
@@ -1788,7 +2222,8 @@ class Api:
             f"Started: {datetime.now().astimezone():%Y-%m-%d %H:%M:%S %z}",
             f"System: {system_text()}, Python {platform.python_version()}",
             f"Device: {DEVICES.get(self._device, 'unknown')} (device auto)",
-            "Environments: " + (f"bundled in {paths.ENVS_DIR}" if paths.ENVS_DIR else "conda")
+            "Environments: " + (f"bundled in {paths.ENVS_DIR}" if paths.ENVS_DIR
+                                else "pixi" if envs.pixi_prefix(paths.ASR_ENV) else "conda")
             + f" ({paths.ASR_ENV}, {paths.MFA_ENV}, {paths.JA_ENV})",
             f"Packages ({paths.ASR_ENV}): {package_versions()}",
             f"Project: {run.project.name} ({run.project.folder})",
@@ -1801,7 +2236,8 @@ class Api:
         ]
         for i, r in enumerate(run.recs.values(), 1):
             duration = fmt_seconds(r.duration_s) if r.duration_s is not None else "length unknown"
-            lines.append(f"  {i}. {r.id}  ({duration})  {run.project.audio_path(r)}  (added from {r.source})")
+            part = f"  part {fmt_part(r.part)}" if r.part else ""
+            lines.append(f"  {i}. {r.id}  ({duration}){part}  {run.project.audio_path(r)}  (added from {r.source})")
         return lines
 
     def _find_device(self) -> None:
@@ -1822,7 +2258,7 @@ class Api:
 
     def _save_settings(self, tell: bool = False) -> bool:
         """settings.json: the projects folder, the project last shown and the window's language if
-        one was chosen (ui_language), and the appearance (appearance). Keys of earlier versions stay (results_dir: where the earlier
+        one was chosen (ui_language), the appearance (appearance) and the sidebar's tab (mode). Keys of earlier versions stay (results_dir: where the earlier
         analyses are). False if it could not be written; tell: say so in the status bar too (a
         setting the user chose, which then holds only until Clausa quits)."""
         self._settings["projects_dir"] = str(self._root)
@@ -1847,7 +2283,9 @@ class Api:
         files = (event.get("dataTransfer") or {}).get("files") or []
         found = [f.get("pywebviewFullPath") for f in files if isinstance(f, dict)]
         found = [p for p in found if p]
-        if len(found) < len(files):
+        if self._mode == "compute":  # the page says: add recordings in Annotate
+            found = []
+        elif len(found) < len(files):
             self._log.write(f"Not added: {len(files) - len(found)} dropped item(s) without a file path")
         if found:
             self.add_paths(found)
@@ -1856,15 +2294,22 @@ class Api:
 
     def _shutdown(self) -> None:
         """The window has closed: stop an active session and wait until its stage processes are gone."""
+        self.stop_playing()
+        self._remove_play_files(keep_last=False)
         with self._lock:
+            job, job_thread = self._job, self._job_thread
+            if job is not None and job.status == "running":
+                job.status = "stopping"
+                job.stop.set()
             run, thread = self._run, self._thread
             if run is not None and run.status == "running":
                 run.status = "stopping"
                 self._log.stopping = True
                 run.stop.set()
                 self._log.write("The window was closed: stopping the session")
-        if thread is not None:
-            thread.join(timeout=60)
+        for t in (job_thread, thread):
+            if t is not None:
+                t.join(timeout=60)
         proc = self._device_proc  # closed within seconds of starting: the device question still runs
         if proc is not None and proc.poll() is None:
             proc.kill()

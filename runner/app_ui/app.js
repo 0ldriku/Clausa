@@ -13,7 +13,8 @@
    &project=<id> (or earlier),
    &select=N, &filter=done|running|waiting|failed|new, &side=0|1 (sidebar; default: shown from
    1000 px), &log=1, &dialog=new (&name=..., &dlang=ja) | about, &confirm=delete|again|remove,
-   &menu=project|settings, &theme=light|dark|system (theme.js), &still=1 (no live ticking, for screenshots). */
+   &menu=project|settings|csv, &theme=light|dark|system (theme.js), &mode=annotate|compute (the sidebar's tab),
+   &part=1 (the selected recording gets a part), &still=1 (no live ticking, for screenshots). */
 (function () {
   'use strict';
 
@@ -27,9 +28,8 @@
   var FILTERS = ['done', 'running', 'waiting', 'failed', 'new'];
   var LEVELS = { info: 'plain', ok: 'ok', error: 'bad' };
   var POLL_ACTIVE_MS = 500, POLL_IDLE_MS = 2000, BRIDGE_WAIT_MS = 1500, NOTICE_MS = 6000;
-  // The sidebar is shown from SIDE_MIN_W; while the details panel is open it hides itself unless the
-  // window holds both beside the table: 232 + the compact table (944) + the panel (304).
-  var SIDE_MIN_W = 1000, SIDE_AND_DETAILS_W = 1480;
+  // The sidebar is shown from SIDE_MIN_W, or as the toggle leaves it.
+  var SIDE_MIN_W = 1000;
   // outline icons, one set: 24-unit grid, 1.75 stroke, drawn at 14-16 px in currentColor
   function icon(d, size) { return '<svg aria-hidden="true" width="' + (size || 16) + '" height="' + (size || 16) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'; }
   var FOLDER = icon('<path d="M3.5 7.5a2 2 0 0 1 2-2h3.6l2 2h7.4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>');
@@ -274,10 +274,26 @@
   function stageText(run) { return word('stage.', stepKey(run.stage, run.stage_label), run.stage_label); }
   function stageShort(run) { var k = stepKey(run.stage, run.stage_label); return k && has('short.' + k) ? t('short.' + k) : stageText(run) || t('stage.unknown'); }
   function groupStart(k) { return k === 3 || k === 6; }
+  // The sidebar's tab: Annotate (the sessions) or Compute (the measures from the TextGrids as they are
+  // now; the backend's _compute_state names each recording's state there)
+  var CFILTERS = ['computed', 'computing', 'ready', 'failed', 'not_annotated'];
+  var CDOTS = { computed: 'done', computing: 'running', ready: 'new', failed: 'failed', not_annotated: 'none' };
+  function modeOf(st) { return S.modeWant || ((st && st.app) || {}).mode || 'annotate'; }
+  function cmode(st) { return modeOf(st) === 'compute'; }
+  function jobOf(st) { return (st && st.job) || {}; }
+  function jobHere(st) { var job = jobOf(st), p = projOf(st); return isActive(job) && !!p && job.project_id === p.id; }
+  function busyAny(st) { return isActive(runOf(st)) || isActive(jobOf(st)); }
+  function cstatus(r) { return (r.compute && r.compute.status) || 'not_annotated'; }
+  function rowStatus(r, run, st) { return cmode(st) ? cstatus(r) : shownStatus(r, run); }
   function counts(st) {
-    var run = runOf(st), c = { all: 0, done: 0, running: 0, waiting: 0, failed: 0, new: 0 };
-    recsOf(st).forEach(function (r) { c.all++; c[shownStatus(r, run)]++; });
+    var run = runOf(st), c = { all: 0, done: 0, running: 0, waiting: 0, failed: 0, new: 0, computed: 0, computing: 0, ready: 0, not_annotated: 0 };
+    recsOf(st).forEach(function (r) { c.all++; c[rowStatus(r, run, st)]++; });
     return c;
+  }
+  // why a recording has no measures in Compute: by its code (compute.err.<code>)
+  function computeErrorText(r) {
+    var c = r.compute || {};
+    return msgText({ key: c.error_code ? 'compute.err.' + c.error_code : '', params: c.error_params, text: c.error }) || t('details.compute_failed');
   }
 
   /* ---------- adapter ---------- */
@@ -314,6 +330,8 @@
       if (params.get('confirm') === 'remove' && recsOf(S.state).length) confirmRemove(recsOf(S.state)[0]);
       if (params.get('menu') === 'project') $('projMenuBtn').click();
       if (params.get('menu') === 'settings') $('settingsBtn').click();
+      if (params.get('menu') === 'csv') $('csvBtn').click();
+      if (params.get('part') === '1' && S.sel !== null) api.set_part(S.sel, 12.5, 110).then(refresh);
     });
   }
 
@@ -342,7 +360,7 @@
     }, function () { /* keep the last state; the next poll tries again */ }).then(function () {
       polling = null;
       if (pollAgain) { pollAgain = false; return refresh(); }
-      pollTimer = setTimeout(refresh, isActive(runOf(S.state)) ? POLL_ACTIVE_MS : POLL_IDLE_MS);
+      pollTimer = setTimeout(refresh, busyAny(S.state) ? POLL_ACTIVE_MS : POLL_IDLE_MS);
     });
     return polling;
   }
@@ -364,6 +382,13 @@
     var lang = (st.app || {}).ui_language;
     if (S.uiWant && lang === S.uiWant) S.uiWant = null;
     if (S.uiWant || lang) setLanguage(S.uiWant || lang);
+    if (S.modeWant && (st.app || {}).mode === S.modeWant) S.modeWant = null;
+    if (S.modeShown !== modeOf(st)) {  // the other tab: its own filters
+      if (S.modeShown) S.filter = null;
+      S.modeShown = modeOf(st);
+    }
+    $('win').classList.toggle('mode-compute', cmode(st));
+    $('win').classList.toggle('mode-annotate', !cmode(st));
     var p = projOf(st), shown = p ? p.id : null;
     if (shown !== S.shown) {  // another project: its own selection, filter and title
       if (S.shown !== null) { S.sel = null; S.filter = null; }
@@ -402,11 +427,10 @@
     renderLog(st);
   }
 
-  // The sidebar: shown or hidden by the toolbar's toggle; by default hidden under 1000 px, and while
-  // the details panel is open in a window that cannot hold both beside the table.
+  // The sidebar: shown or hidden by the toolbar's toggle; by default hidden under 1000 px. The details
+  // panel does not hide it (the author's choice, 1 November 2026).
   function sideOpen() {
-    var w = window.innerWidth, user = S.side === null ? w >= SIDE_MIN_W : S.side;
-    return user && !(S.sel !== null && w < SIDE_AND_DETAILS_W);
+    return S.side === null ? window.innerWidth >= SIDE_MIN_W : S.side;
   }
   function applySide() {
     var open = sideOpen(), b = $('sideToggle'), label = t(open ? 'side.hide' : 'side.show');
@@ -439,8 +463,12 @@
     var dir = set.projects_dir_short || set.projects_dir || '';
     setText($('folderPath'), dir);
     $('settingsBtn').title = t('settings.saved_in', { folder: dir });
-    setDisabled($('changeFolderBtn'), isActive(runOf(st)));
-    $('changeFolderBtn').title = isActive(runOf(st)) ? t('settings.not_while_running') : '';
+    setDisabled($('changeFolderBtn'), busyAny(st));
+    $('changeFolderBtn').title = busyAny(st) ? t('settings.not_while_running') : '';
+    Array.prototype.forEach.call(document.querySelectorAll('.modes [data-mode]'), function (b) {
+      var on = String(b.getAttribute('data-mode') === modeOf(st));
+      if (b.getAttribute('aria-selected') !== on) b.setAttribute('aria-selected', on);
+    });
     Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-ui]'), function (b) {
       var on = String(b.getAttribute('data-ui') === UI);
       if (b.getAttribute('aria-checked') !== on) b.setAttribute('aria-checked', on);
@@ -475,7 +503,11 @@
       }
       case 'stopping': return t('status.stopping');
     }
+    var job = jobOf(st);
+    if (job.status === 'running') return t('cstatus.computing', { k: job.ended_count || 0, n: job.total || 0 });
+    if (job.status === 'stopping') return t('status.stopping');
     if (readonly(st)) return t('status.earlier', { dir: p.dir || '' });
+    if (cmode(st)) return computeStatus(st);
     if ((run.status === 'done' || run.status === 'stopped') && p && run.project_id === p.id) {
       return [t(run.status === 'done' ? 'status.done' : 'status.stopped'), t('status.session_count', { k: k, n: n }), f ? t('status.failed_count', { n: f }) : '',
               fmtElapsed(run.elapsed_s)].filter(Boolean).join(' · ');
@@ -491,29 +523,69 @@
     return t(p && p.last_session ? 'status.all_done_last' : 'status.all_done', { n: c.done, date: dayText(p && p.last_session, true) });
   }
 
+  function computeStatus(st) {
+    var job = jobOf(st), p = projOf(st), c = counts(st), annotated = c.all - c.not_annotated;
+    var mine = p && job.project_id === p.id;
+    if (mine && job.status === 'failed') return t('cstatus.job_failed');
+    if (mine && (job.status === 'done' || job.status === 'stopped') && !c.ready) {
+      return [t(job.status === 'done' ? 'cstatus.done' : 'status.stopped', { k: job.done_count || 0, n: job.total || 0 }),
+              job.failed_count ? t('status.failed_count', { n: job.failed_count }) : '', fmtElapsed(job.elapsed_s)].filter(Boolean).join(' · ');
+    }
+    if (!c.all) return t('cstatus.empty');
+    if (!annotated) return t('cstatus.none_annotated');
+    if (c.ready) return t('cstatus.ready', { n: c.ready });
+    if (c.failed) return t('cstatus.failed', { n: c.failed });
+    return t('cstatus.all_computed', { n: c.computed, date: dayText(p && p.computed, true) });
+  }
+
   function renderBars(st) {
-    var run = runOf(st), R = recsOf(st), p = projOf(st), app = st.app || {};
-    var busy = isActive(run), here = runHere(st), lang = langOf(st), c = counts(st), ro = readonly(st);
+    var run = runOf(st), R = recsOf(st), p = projOf(st), app = st.app || {}, cm = cmode(st), job = jobOf(st);
+    var busy = busyAny(st), here = runHere(st) || jobHere(st), lang = langOf(st), c = counts(st), ro = readonly(st);
+    var mine = jobHere(st) ? job : runHere(st) ? run : cm ? job : run, annotated = c.all - c.not_annotated;
     var focusStart = document.activeElement === $('startBtn'), focusStop = document.activeElement === $('stopBtn');
 
     $('empty').hidden = !!R.length || ro;
     $('rowsTable').classList.toggle('is-empty', !R.length);
+    setText($('emptyTitle'), t(cm ? 'empty.compute_title' : 'empty.title'));
+    setText($('emptyText'), t(cm ? 'empty.compute_text' : 'empty.formats'));
+    $('chooseBtn').hidden = cm;
     renderDrop();
 
-    // Start analyses every recording that is not done; Stop shows in the project that runs
+    // Annotate: Start analyses every recording that is not done. Compute: Start computes the measures
+    // of every annotated recording from its TextGrid as it is now. Stop shows in the project that runs.
+    $('addBtn').hidden = cm;
+    $('csvBtn').hidden = !cm;
+    $('againAllBtn').hidden = cm;
+    $('importPartsBtn').hidden = cm;
     $('startBtn').hidden = here;
     $('stopBtn').hidden = !here;
-    setDisabled($('startBtn'), busy || !(c.new + c.failed));
-    $('startBtn').title = busy ? busyText(run) : c.new + c.failed ? t('start.todo', { n: c.new + c.failed }) : t('start.all_done');
-    setDisabled($('stopBtn'), run.status === 'stopping');
-    setText($('stopLabel'), t(run.status === 'stopping' ? 'toolbar.stopping' : 'toolbar.stop'));
+    if (cm) {
+      setDisabled($('startBtn'), busy || !annotated);
+      $('startBtn').title = isActive(run) ? busyText(run) : busy ? t('cstart.busy') : annotated ? t('cstart.todo', { n: annotated }) : t('cstart.none');
+    } else {
+      setDisabled($('startBtn'), busy || !(c.new + c.failed));
+      $('startBtn').title = isActive(run) ? busyText(run) : busy ? t('cstart.busy') : c.new + c.failed ? t('start.todo', { n: c.new + c.failed }) : t('start.all_done');
+    }
+    setDisabled($('stopBtn'), mine.status === 'stopping');
+    setText($('stopLabel'), t(mine.status === 'stopping' ? 'toolbar.stopping' : 'toolbar.stop'));
     if (here && focusStart) $('stopBtn').focus();
     if (!here && focusStop) $('startBtn').focus();
-    setDisabled($('csvBtn'), !(p && p.csv));
-    $('csvBtn').title = t(p && p.csv ? 'csv.title' : 'csv.none');
-    setDisabled($('renameBtn'), here);
-    setDisabled($('deleteBtn'), here);
+    // Open CSV: the measures, and the words, pauses and clauses of the same Compute (or analysis);
+    // a table an earlier Compute did not make is greyed out.
+    var csv = !!(p && p.csv && (p.computed || ro));
+    setDisabled($('csvBtn'), !csv);
+    $('csvBtn').title = t(csv ? 'csv.title' : 'csv.none');
+    Array.prototype.forEach.call(document.querySelectorAll('#csvMenu [data-table]'), function (b) {
+      var k = b.getAttribute('data-table'), has = k === 'measures' ? csv : csv && (p.tables || []).indexOf(k) >= 0;
+      setDisabled(b, !has);
+      b.title = has ? '' : t(ro ? 'csv.missing_earlier' : 'csv.missing');
+    });
+    $('csvFrom').hidden = $('csvFromSep').hidden = !!ro;
+    if (!csv && !$('csvMenu').hidden) closeMenus(false);
+    setDisabled($('renameBtn'), runHere(st) || jobHere(st));
+    setDisabled($('deleteBtn'), runHere(st) || jobHere(st));
     setDisabled($('againAllBtn'), busy || !R.length);
+    setDisabled($('importPartsBtn'), !R.length);
 
     if (!S.renaming) setText($('projName'), p ? p.name : '');
     $('projName').title = ro ? t('title.earlier', { name: p ? p.name : '' }) : t(here ? 'title.rename_later' : 'title.click_to_rename');
@@ -521,7 +593,7 @@
     $('projLang').title = t('lang.title_' + lang);
     setText($('projCount'), t('count.recordings', { n: R.length }));
 
-    var dot = busy ? 'run' : run.status === 'failed' ? 'bad' : run.status === 'done' && p && run.project_id === p.id ? '' : 'idle';
+    var dot = busy ? 'run' : mine.status === 'failed' ? 'bad' : mine.status === 'done' && p && mine.project_id === p.id ? '' : 'idle';
     $('sdot').className = 'dot' + (dot ? ' ' + dot : '');
     setText($('smsg'), S.notice || statusText(st));
     setText($('ver'), [word('device.', app.device_key, app.device), app.version ? 'v' + app.version : ''].filter(Boolean).join(' · '));
@@ -531,16 +603,17 @@
 
   // The summary line names the parts of the project, and each part filters the table.
   function renderSummary(st) {
-    var c = counts(st), p = projOf(st), run = runOf(st);
+    var c = counts(st), p = projOf(st), run = runOf(st), cm = cmode(st), job = jobOf(st);
     if (S.filter && !c[S.filter]) S.filter = null;
     var h = '<button type="button" class="fbtn all" data-filter="" data-key="f-all" aria-pressed="' + String(!S.filter) + '">' + esc(t('count.recordings', { n: c.all })) + '</button>';
-    FILTERS.forEach(function (k) {
+    (cm ? CFILTERS : FILTERS).forEach(function (k) {
       if (!c[k]) return;
-      h += '<span class="fsep" aria-hidden="true">·</span><button type="button" class="fbtn" data-filter="' + k + '" data-key="f-' + k + '" aria-pressed="' + String(S.filter === k) + '"><i class="sd ' + k + '" aria-hidden="true"></i>' + esc(t('filter.' + k, { n: c[k] })) + '</button>';
+      h += '<span class="fsep" aria-hidden="true">·</span><button type="button" class="fbtn" data-filter="' + k + '" data-key="f-' + k + '" aria-pressed="' + String(S.filter === k) + '"><i class="sd ' + (cm ? CDOTS[k] : k) + '" aria-hidden="true"></i>' + esc(t((cm ? 'cfilter.' : 'filter.') + k, { n: c[k] })) + '</button>';
     });
     patch($('filters'), h);
     var stamp = '';
     if (p && p.kind === 'earlier') stamp = t('stamp.earlier', { date: dayText(p.last_session, true) });
+    else if (p && cm) stamp = jobHere(st) ? t('cstamp.running', { time: job.started || '' }) : p.computed ? t('cstamp.computed', { date: dayText(p.computed, true) }) : t('cstamp.none');
     else if (p) {
       if (runHere(st)) stamp = t('stamp.running', { n: (p.sessions || 0) + 1, time: run.started || '' });
       else if (p.sessions) {  // the last session's date where it is known
@@ -552,19 +625,31 @@
     setText($('stamp'), stamp);
   }
 
+  // Annotate: progress, no measures; Compute: the measures, no progress (it takes seconds)
   function renderHead(st) {
-    var u = units(langOf(st)), n = runOf(st).stage_count || 5;
+    var u = units(langOf(st)), n = runOf(st).stage_count || 5, cm = cmode(st);
     var h = '<th scope="col" class="no"><div class="h">#</div><div class="u">&nbsp;</div></th><th scope="col" class="rec-h"><div class="h">' + esc(t('head.recording')) + '</div><div class="u">' + esc(t('head.recording_sub')) + '</div></th>' +
-            '<th scope="col"><div class="h">' + esc(t('head.progress')) + '</div><div class="u">' + esc(t('head.stages', { n: n })) + '</div></th>' +
+            (cm ? '' : '<th scope="col"><div class="h">' + esc(t('head.progress')) + '</div><div class="u">' + esc(t('head.stages', { n: n })) + '</div></th>') +
             '<th scope="col"><div class="h">' + esc(t('head.status')) + '</div><div class="u">' + esc(t('head.status_sub')) + '</div></th>';
-    for (var i = 0; i < 9; i++) h += '<th scope="col" class="num' + (groupStart(i) ? ' g' : '') + '" title="' + esc(t('measure.' + CODES[i])) + '"><div class="h">' + CODES[i] + '</div><div class="u">' + u[i] + '</div></th>';
+    if (cm) for (var i = 0; i < 9; i++) h += '<th scope="col" class="num' + (groupStart(i) ? ' g' : '') + '" title="' + esc(t('measure.' + CODES[i])) + '"><div class="h">' + CODES[i] + '</div><div class="u">' + u[i] + '</div></th>';
     patch($('headRow'), h + '<th scope="col"><span class="sr-only">' + esc(t('head.actions')) + '</span></th>');
+    patch($('cols'), '<col class="c-no"><col class="c-rec">' + (cm ? '' : '<col class="c-prog">') + '<col class="c-status">' +
+      (cm ? '<col class="c-m u"><col class="c-m u"><col class="c-m"><col class="c-m g"><col class="c-m"><col class="c-m"><col class="c-m g"><col class="c-m"><col class="c-m">' : '') + '<col class="c-act">');
   }
 
   function badge(s) {
     if (s === 'running') return '<span class="badge running"><span class="pulse" aria-hidden="true"></span>' + esc(t('badge.running')) + '</span>';
     var ic = { done: I_DONE, failed: I_FAIL, waiting: I_WAIT, new: I_NEW }[s];
     return '<span class="badge ' + s + '">' + ic + esc(t('badge.' + s)) + '</span>';
+  }
+  function cbadge(r) {
+    var s = cstatus(r), c = r.compute || {};
+    if (s === 'computing') return '<span class="badge running"><span class="pulse" aria-hidden="true"></span>' + esc(t('cbadge.computing')) + '</span>';
+    if (s === 'failed') {
+      var key = 'cshort.' + (c.error_code || 'calculator');
+      return '<span class="badge failed">' + I_FAIL + esc(has(key) ? t(key, c.error_params || {}) : t('cbadge.failed')) + '</span>';
+    }
+    return '<span class="badge ' + ({ computed: 'done', ready: 'ready', not_annotated: 'new' }[s] || 'new') + '">' + (s === 'computed' ? I_DONE : '') + esc(t('cbadge.' + s)) + '</span>';
   }
   // kind: words or clauses
   function tgBadge(letter, kind, state) {
@@ -575,7 +660,7 @@
   // A row's one action: its folder when done; remove when it is not part of a running session.
   function rowAction(r, run, st) {
     if (r.status === 'done') return 'open';
-    return readonly(st) || inRun(r, run) ? null : 'remove';
+    return readonly(st) || inRun(r, run) || jobHere(st) ? null : 'remove';
   }
   function actionButton(r, run, st) {
     var a = rowAction(r, run, st), id = esc(r.id);
@@ -620,7 +705,7 @@
       seen[key] = true;
       if (tbody.children[i] !== tr) tbody.insertBefore(tr, tbody.children[i] || null);
       updateRow(tr, r, i, run, st);
-      var hide = !!S.filter && shownStatus(r, run) !== S.filter;
+      var hide = !!S.filter && rowStatus(r, run, st) !== S.filter;
       if (tr.hidden !== hide) tr.hidden = hide;
       if (!hide) shown++;
     });
@@ -635,44 +720,53 @@
       if (next) next.focus();
     }
     // a filtered table shrinks to its rows and says what it leaves out
-    $('addslot').hidden = !R.length || !!S.filter || readonly(st);
+    $('addslot').hidden = !R.length || !!S.filter || readonly(st) || cmode(st);
     $('filterinfo').hidden = !S.filter;
-    if (S.filter) fillSlots($('filterinfo'), t('filter.showing_' + S.filter, { shown: shown, n: R.length }));
+    if (S.filter) fillSlots($('filterinfo'), t((cmode(st) ? 'cfilter.showing_' : 'filter.showing_') + S.filter, { shown: shown, n: R.length }));
   }
   function updateRow(tr, r, i, run, st) {
-    var c = tr._c, s = shownStatus(r, run), tg = r.textgrids || {}, vals = measureList(r), cls = s === 'running' ? 'running' : '', when = whenText(r);
+    var c = tr._c, cm = cmode(st), s = rowStatus(r, run, st), tg = r.textgrids || {}, vals = cm ? measureList(r) : null;
+    var cls = s === 'running' || s === 'computing' ? 'running' : '', when = whenText(r);
     if (tr.className !== cls) tr.className = cls;
     tr.setAttribute('aria-selected', String(S.sel === String(r.id)));
     setText(c.no, pad2(i + 1));
-    patch(c.rec, '<div class="rec" title="' + esc(r.name) + '"><b>' + esc(r.name) + '</b><span>' + fmtDur(r.duration_s) + (when ? (r.duration_s != null ? ' · ' : '') + esc(when) : '') + '</span></div>');
-    setProg(c.prog, r, s, run);
-    patch(c.st, '<div class="st">' + badge(s) + tgBadge('W', 'words', tg.words) + tgBadge('C', 'clauses', tg.clauses) + '</div>');
+    var sub = [fmtDur(r.duration_s), r.part && !cm ? t('part.row', { part: fmtPart(r.part) }) : '', when].filter(Boolean).map(esc).join(' · ');
+    patch(c.rec, '<div class="rec" title="' + esc(r.name) + '"><b>' + esc(r.name) + '</b><span>' + sub + '</span></div>');
+    if (c.prog.hidden !== cm) c.prog.hidden = cm;
+    if (!cm) setProg(c.prog, r, s, run);
+    // Compute: a tier the TextGrid lost shows as missing
+    var lost = cm && s === 'failed' && r.compute && r.compute.error_code === 'no_tier' ? (r.compute.error_params || {}).tier : null;
+    patch(c.st, '<div class="st">' + (cm ? cbadge(r) : badge(s)) + tgBadge('W', 'words', lost === 'words' ? 'no' : tg.words) + tgBadge('C', 'clauses', lost === 'clauses' ? 'no' : tg.clauses) + '</div>');
     for (var k = 0; k < 9; k++) {
       var v = vals ? vals[k] : null, nc = (v === null ? 'num none' : 'num') + (groupStart(k) ? ' g' : '');
+      if (c.nums[k].hidden !== !cm) c.nums[k].hidden = !cm;
       setText(c.nums[k], v === null ? '—' : v);
       if (c.nums[k].className !== nc) c.nums[k].className = nc;
     }
-    patch(c.act, actionButton(r, run, st));
+    patch(c.act, cm ? (r.status === 'done' ? actionButton(r, run, st) : '') : actionButton(r, run, st));
   }
 
   function renderInspector(st) {
     var run = runOf(st), r = S.sel === null ? null : findRec(S.sel), el = $('inspector'), ro = readonly(st);
     $('win').classList.toggle('ins-open', !!r);
     el.hidden = !r;
+    renderPart(r, st);
     if (!r) return;
-    var s = shownStatus(r, run), id = esc(r.id), u = units(langOf(st)), when = whenText(r);
+    var s = shownStatus(r, run), id = esc(r.id), u = units(langOf(st)), when = whenText(r), cm = cmode(st), cs = cstatus(r);
 
-    patch($('insHead'), '<div class="ins-title"><h2 title="' + esc(r.name) + '">' + esc(r.name) + '</h2><div class="ins-meta">' + badge(s) + '<span class="d">' + fmtDur(r.duration_s) + (when ? (r.duration_s != null ? ' · ' : '') + esc(when) : '') + '</span></div></div>' +
+    patch($('insHead'), '<div class="ins-title"><h2 title="' + esc(r.name) + '">' + esc(r.name) + '</h2><div class="ins-meta">' + (cm ? cbadge(r) : badge(s)) + '<span class="d">' + fmtDur(r.duration_s) + (when ? (r.duration_s != null ? ' · ' : '') + esc(when) : '') + '</span></div></div>' +
       '<button type="button" class="iconbtn" data-action="close-inspector" data-key="close" aria-label="' + esc(t('details.close')) + '">' + CROSS + '</button>');
 
     var err = $('insErr');
-    err.hidden = s !== 'failed';
-    if (s === 'failed') patch(err, '<b>' + esc(failedText(r)) + '</b><span>' + esc(errorText(r)) + '</span>' +
+    err.hidden = cm ? cs !== 'failed' : s !== 'failed';
+    if (cm && cs === 'failed') patch(err, '<b>' + esc(t('details.compute_failed')) + '</b><span>' + esc(computeErrorText(r)) + '</span>' +
+      '<button type="button" class="small" data-action="show-in-log" data-id="' + id + '" data-key="log">' + esc(t('details.show_in_log')) + '</button>');
+    else if (s === 'failed') patch(err, '<b>' + esc(failedText(r)) + '</b><span>' + esc(errorText(r)) + '</span>' +
       (ro ? '' : '<span class="again">' + esc(t('details.again_next')) + '</span>') +
       '<button type="button" class="small" data-action="show-in-log" data-id="' + id + '" data-key="log">' + esc(t('details.show_in_log')) + '</button>');
 
     // the nine measures by group, each with its name spelled out: the table only has room for the codes
-    var vals = measureList(r), tiles = $('insTiles'), lang = langOf(st);
+    var vals = cm ? measureList(r) : null, tiles = $('insTiles'), lang = langOf(st);
     tiles.hidden = !vals;
     if (vals) patch(tiles, GROUPS.map(function (g) {
       var rows = '';
@@ -683,7 +777,7 @@
     }).join(''));
 
     var prog = $('insProg'), live = s === 'running';
-    prog.hidden = !inRun(r, run);
+    prog.hidden = cm || !inRun(r, run);
     if (!prog.hidden) {
       var p = progPct(r, s), fill = prog.querySelector('.fill'), eta = etaText(run.eta_s), stage = stageText(run) || t('stage.unknown');
       setText(prog.querySelector('.lbl'), !live ? t('details.waiting') : run.stage_index ? t('details.step', { stage: stage, i: run.stage_index, n: run.stage_count || 5 }) : stage);
@@ -698,30 +792,259 @@
     if (files.length) patch(fe, '<div class="sect">' + esc(t('details.files')) + '</div><div class="files">' + files.map(function (f, j) {
       var mark = f.kind === 'dir' ? '<span class="dirm">' + I_DIR + '</span>' : f.exists ? '<span class="y">' + I_FILE + '</span>' : '<span class="n">' + I_NOFILE + '</span>';
       var label = f.label_kind === 'session' ? t('file.session', { name: f.name }) : word('file.', f.label_kind, f.label);
-      return f.exists
+      var hint = f.label_kind === 'words' || f.label_kind === 'clauses' ? '<small class="fhint">' + esc(t('file.' + f.label_kind + '_hint')) + '</small>' : '';
+      return (f.exists
         ? '<div>' + mark + '<button type="button" class="link" data-action="reveal" data-path="' + esc(f.path) + '" data-key="file' + j + '" title="' + esc(f.path) + '">' + esc(label) + '</button></div>'
-        : '<div>' + mark + '<span class="missing">' + esc(label) + '<span class="sr-only"> ' + esc(t('details.not_written')) + '</span></span></div>';
+        : '<div>' + mark + '<span class="missing">' + esc(label) + '<span class="sr-only"> ' + esc(t('details.not_written')) + '</span></span></div>') + hint;
     }).join('') + '</div>');
 
     // its actions: open, analyse again, remove; none while it is in the running session
-    var foot = $('insFoot'), busy = isActive(run), inSession = inRun(r, run), html = '';
-    if (!inSession) {
+    var foot = $('insFoot'), busy = busyAny(st), inSession = inRun(r, run), html = '';
+    if (cm) {  // Compute: the session folder, where the TextGrid is
+      if (r.status === 'done') html = '<div class="ins-actions"><button type="button" class="ins-foot" data-action="open-folder" data-id="' + id + '" data-key="foot-open">' + esc(t('details.open_folder')) + '</button></div>';
+    } else if (!inSession) {
       var open = r.status === 'done' || ro && r.files && r.files.length;
       var again = !ro && r.status !== 'new';
       if (open || again) html += '<div class="ins-actions">' +
         (open ? '<button type="button" class="ins-foot" data-action="open-folder" data-id="' + id + '" data-key="foot-open">' + esc(t('details.open_folder')) + '</button>' : '') +
-        (again ? '<button type="button" class="ins-foot" data-action="again" data-id="' + id + '" data-key="foot-again"' + (busy ? ' aria-disabled="true" title="' + esc(busyText(run)) + '"' : '') + '>' + esc(t('details.again')) + '</button>' : '') + '</div>';
-      if (!ro) html += '<button type="button" class="ins-remove" data-action="remove" data-id="' + id + '" data-key="foot-remove">' + esc(t('details.remove')) + '</button>';
+        (again ? '<button type="button" class="ins-foot" data-action="again" data-id="' + id + '" data-key="foot-again"' + (busy ? ' aria-disabled="true" title="' + esc(isActive(run) ? busyText(run) : t('cstart.busy')) + '"' : '') + '>' + esc(t('details.again')) + '</button>' : '') + '</div>';
+      if (!ro && !jobHere(st)) html += '<button type="button" class="ins-remove" data-action="remove" data-id="' + id + '" data-key="foot-remove">' + esc(t('details.remove')) + '</button>';
     }
     foot.hidden = !html;
     if (html) patch(foot, html);
+  }
+
+  /* ---------- part to analyse ---------- */
+
+  // The selected recording's part in Annotate: the whole recording, or from one time to another, set
+  // on its waveform (drag the edges, or type the times) and saved at once (set_part). Built once in
+  // index.html and updated in place, so a drag or a typed time survives the polls.
+  var PART = { id: null, key: null, mode: 'whole', from: 0, to: 0, dur: 0, drag: null, err: '', saved: null, playing: null, pending: 0 };
+  var WAVES = {};  // project id + recording id + added -> {duration, peaks}, or 'loading', or 'failed'
+  function fmtPart(part) { return fmtTime1(part[0]) + '–' + fmtTime1(part[1]); }
+  function fmtTime1(x) {
+    x = Math.round(Math.max(0, x) * 10) / 10;
+    var h = Math.floor(x / 3600), m = Math.floor(x / 60) % 60, sec = (x % 60).toFixed(1);
+    return (h ? h + ':' + pad2(m) : m) + ':' + (sec.length < 4 ? '0' : '') + sec;
+  }
+  function parseTime(text) {  // 65.5, 1:05.5, 1:01:05.5 (a comma for the point too)
+    var parts = String(text).trim().replace(',', '.').split(':'), v = 0;
+    if (!parts[0] && parts.length === 1) return null;
+    for (var i = 0; i < parts.length; i++) {
+      if (!/^\d+(\.\d*)?$|^\.\d+$/.test(parts[i]) || (i < parts.length - 1 && parts[i].indexOf('.') >= 0) || parts.length > 3) return null;
+      v = v * 60 + parseFloat(parts[i]);
+    }
+    return v;
+  }
+  function samePart(a, b) { return (!a && !b) || (!!a && !!b && Math.abs(a[0] - b[0]) < 0.005 && Math.abs(a[1] - b[1]) < 0.005); }
+  function partEditable(r, st) { return !!r && !cmode(st) && !readonly(st) && !inRun(r, runOf(st)); }
+  function renderPart(r, st) {
+    var box = $('insPart'), show = partEditable(r, st);
+    box.hidden = !show;
+    if (!show) { if (PART.playing) stopPart(); if (!r) PART.id = PART.key = null; return; }
+    // ids are file names and repeat across projects: the editor and its waveform go by both
+    var id = String(r.id), key = (projOf(st) || {}).id + '\u0000' + id + '\u0000' + (r.added || '');
+    var w0 = WAVES[key], dur = r.duration_s || (w0 && typeof w0 === 'object' ? w0.duration : 0) || 0;
+    if (PART.key !== key) {  // another recording: its saved part
+      if (PART.playing) stopPart();
+      clearTimeout(PART.keyTimer);
+      PART = { id: id, key: key, mode: r.part ? 'part' : 'whole', from: r.part ? r.part[0] : 0, to: r.part ? r.part[1] : dur, dur: dur, drag: null, err: '', saved: r.part, playing: null, pending: 0 };
+    } else if (!samePart(r.part, PART.saved) && !PART.drag && !PART.pending && !partFocused()) {  // changed elsewhere (Use this part for ..., an import)
+      PART.saved = r.part;
+      if (r.part) { PART.mode = 'part'; PART.from = r.part[0]; PART.to = r.part[1]; }
+    }
+    PART.dur = dur;
+    Array.prototype.forEach.call(box.querySelectorAll('[data-part]'), function (b) {
+      var on = b.getAttribute('data-part') === PART.mode;
+      if (b.getAttribute('aria-checked') !== String(on)) b.setAttribute('aria-checked', String(on));
+    });
+    $('partBody').hidden = PART.mode !== 'part';
+    if (PART.mode === 'part') {
+      if (WAVES[key] === undefined) loadWave(key, id);
+      drawPart();
+    }
+    var changed = r.status === 'done' && !samePart(r.part, r.part_used);
+    var note = changed ? t('part.changed', { used: r.part_used ? fmtPart(r.part_used) : t('part.changed_whole') }) : PART.mode === 'part' ? t('part.note') : '';
+    $('partNote').hidden = !note;
+    setText($('partNote'), note);
+    var others = recsOf(st).filter(function (o) { return String(o.id) !== id && o.status === 'new'; }).length;
+    $('partUseAll').hidden = !r.part || !others;
+    setText($('partUseAll'), t('part.use_for_new', { n: others }));
+  }
+  function partFocused() { var a = document.activeElement; return a === $('partFrom') || a === $('partTo'); }
+  function loadWave(key, id) {
+    WAVES[key] = 'loading';
+    call('wave', id).then(function (w) {
+      WAVES[key] = w && w.peaks ? w : 'failed';
+      if (PART.key === key) drawPart();
+    });
+  }
+  // The waveform: one bar per 2 px (the loudest of its peaks), bright inside the part.
+  function drawPart() {
+    var wave = $('partWave'), w = WAVES[PART.key], width = wave.clientWidth || 270, height = wave.clientHeight || 64;
+    var ok = w && typeof w === 'object', dur = PART.dur || (ok ? w.duration : 0) || 1;
+    wave.classList.toggle('no-wave', !ok);
+    setText($('partWaveMsg'), ok ? '' : w === 'failed' ? t('part.no_wave') : t('part.loading'));
+    var x0 = PART.from / dur * width, x1 = PART.to / dur * width;
+    if (ok && (wave._key !== PART.key + ':' + width)) {  // the bars, once per recording and width
+      var n = Math.max(1, Math.floor(width / 2)), pk = w.peaks, bars = [];
+      for (var i = 0; i < n; i++) {
+        var a = Math.floor(i * pk.length / n), b = Math.max(a + 1, Math.floor((i + 1) * pk.length / n)), m = 0;
+        for (var j = a; j < b; j++) if (pk[j] > m) m = pk[j];
+        bars.push([i * 2 + 1, Math.max(0.5, m * (height / 2 - 4))]);
+      }
+      wave._bars = bars;
+      wave._key = PART.key + ':' + width;
+    }
+    var inside = '', outside = '', mid = height / 2;
+    (ok ? wave._bars : []).forEach(function (bar) {
+      var d = 'M' + bar[0] + ' ' + (mid - bar[1]).toFixed(1) + 'V' + (mid + bar[1]).toFixed(1);
+      if (bar[0] >= x0 && bar[0] <= x1) inside += d; else outside += d;
+    });
+    var paths = $('partBars').querySelectorAll('path');
+    if (paths[0].getAttribute('d') !== outside) paths[0].setAttribute('d', outside);
+    if (paths[1].getAttribute('d') !== inside) paths[1].setAttribute('d', inside);
+    $('partSel').style.left = x0 + 'px';
+    $('partSel').style.width = Math.max(0, x1 - x0) + 'px';
+    $('partStartH').style.left = x0 + 'px';
+    $('partEndH').style.left = x1 + 'px';
+    [['partStartH', PART.from], ['partEndH', PART.to]].forEach(function (h) {
+      var el = $(h[0]);
+      el.setAttribute('aria-valuemin', '0');
+      el.setAttribute('aria-valuemax', String(Math.round(dur * 10) / 10));
+      el.setAttribute('aria-valuenow', String(Math.round(h[1] * 10) / 10));
+      el.setAttribute('aria-valuetext', fmtTime1(h[1]));
+    });
+    var axis = '';
+    for (var k = 0; k <= 4; k++) axis += '<span>' + esc(fmtDur(dur * k / 4)) + '</span>';
+    patch($('partAxis'), axis);
+    if (document.activeElement !== $('partFrom')) $('partFrom').value = fmtTime1(PART.from);
+    if (document.activeElement !== $('partTo')) $('partTo').value = fmtTime1(PART.to);
+    $('partErr').hidden = !PART.err;
+    setText($('partErr'), PART.err);
+  }
+  // a change on its way to the backend: the polls in between still have the part before it
+  function sendPart(id, from, to) {
+    var key = PART.key;
+    PART.pending++;
+    return call('set_part', id, from, to).then(function (res) { if (PART.key === key) PART.pending--; return res; });
+  }
+  function savePart(forKey) {
+    if (forKey !== undefined && forKey !== PART.key) return;  // a late keyboard save for another recording
+    var id = PART.id, key = PART.key, part = [Math.round(PART.from * 100) / 100, Math.round(PART.to * 100) / 100];
+    sendPart(id, part[0], part[1]).then(function (res) {
+      if (PART.key !== key) return;
+      if (res && res.ok) { PART.saved = res.part; PART.err = ''; if (res.part) { PART.from = res.part[0]; PART.to = res.part[1]; } }
+      else if (res) { PART.err = msgText(res); }
+      drawPart();
+    });
+  }
+  function timeAt(e) {
+    var box = $('partWave').getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - box.left) / box.width)) * (PART.dur || 0);
+  }
+  function setEdge(edge, v) {  // keeps at least 0.1 s between the edges; the backend checks the rest
+    if (edge === 'start') PART.from = Math.max(0, Math.min(v, PART.to - 0.1));
+    else PART.to = PART.dur ? Math.min(PART.dur, Math.max(v, PART.from + 0.1)) : Math.max(v, PART.from + 0.1);
+    PART.err = '';
+  }
+  function playPart() {
+    if (PART.playing) { stopPart(); return; }
+    if (PART.playPending) return;  // one Play at a time
+    var id = PART.id, key = PART.key, from = PART.from;
+    PART.playPending = true;
+    call('play_part', id, PART.from, PART.to).then(function (res) {
+      PART.playPending = false;
+      if (PART.key !== key) { if (res && res.ok) call('stop_playing'); return; }
+      if (!res || !res.ok) { if (res) { PART.err = msgText(res); drawPart(); } return; }
+      PART.playing = { from: from, length: res.length, t0: performance.now() };
+      playLabel(true);
+      (function tick() {
+        var pl = PART.playing;
+        if (!pl || PART.key !== key) return;
+        var at = (performance.now() - pl.t0) / 1000;
+        if (at >= pl.length) { stopPart(true); return; }
+        var head = $('partHead');
+        head.hidden = false;
+        head.style.left = ((pl.from + at) / (PART.dur || 1) * $('partWave').clientWidth) + 'px';
+        requestAnimationFrame(tick);
+      })();
+    });
+  }
+  function stopPart(ended) {
+    PART.playing = null;
+    $('partHead').hidden = true;
+    playLabel(false);
+    if (!ended) call('stop_playing');
+  }
+  function playLabel(on) {
+    $('partPlayIcon').setAttribute('d', on ? 'M6 5h4.5v14H6zM13.5 5H18v14h-4.5z' : 'M7 4.5v15l12.5-7.5z');
+    setText($('partPlayLabel'), t(on ? 'part.stop' : 'part.play'));
+  }
+  function bindPart() {
+    Array.prototype.forEach.call(document.querySelectorAll('#insPart [data-part]'), function (b) {
+      b.addEventListener('click', function () {
+        var mode = b.getAttribute('data-part');
+        if (mode === PART.mode) return;
+        clearTimeout(PART.keyTimer);
+        PART.mode = mode;
+        PART.err = '';
+        if (mode === 'whole') { if (PART.playing) stopPart(); PART.saved = null; sendPart(PART.id, null, null); }
+        else { PART.from = 0; PART.to = PART.dur; }  // saved once an edge moves
+        render();
+      });
+    });
+    var wave = $('partWave');
+    wave.addEventListener('pointerdown', function (e) {
+      if (!WAVES[PART.key] || typeof WAVES[PART.key] !== 'object') return;
+      var v = timeAt(e);
+      PART.drag = Math.abs(v - PART.from) <= Math.abs(v - PART.to) ? 'start' : 'end';
+      try { wave.setPointerCapture(e.pointerId); } catch (err) { /* a pointer that is gone already */ }
+      $(PART.drag === 'start' ? 'partStartH' : 'partEndH').focus({ preventScroll: true });  // then the arrow keys move it
+      setEdge(PART.drag, v);
+      drawPart();
+      e.preventDefault();
+    });
+    wave.addEventListener('pointermove', function (e) { if (PART.drag) { setEdge(PART.drag, timeAt(e)); drawPart(); } });
+    function release() { if (PART.drag) { PART.drag = null; savePart(); } }
+    wave.addEventListener('pointerup', release);
+    wave.addEventListener('pointercancel', release);
+    [['partStartH', 'start'], ['partEndH', 'end']].forEach(function (h) {
+      $(h[0]).addEventListener('keydown', function (e) {
+        var step = e.shiftKey ? 1 : 0.1, keys = { ArrowLeft: -step, ArrowDown: -step, ArrowRight: step, ArrowUp: step };
+        if (!(e.key in keys)) return;
+        e.preventDefault();
+        setEdge(h[1], (h[1] === 'start' ? PART.from : PART.to) + keys[e.key]);
+        drawPart();
+        clearTimeout(PART.keyTimer);
+        var key = PART.key;
+        PART.keyTimer = setTimeout(function () { savePart(key); }, 400);
+      });
+    });
+    [['partFrom', 'start'], ['partTo', 'end']].forEach(function (f) {
+      var input = $(f[0]);
+      function commit() {
+        var v = parseTime(input.value);
+        if (v === null) { PART.err = t('part.bad_time'); input.setAttribute('aria-invalid', 'true'); drawPart(); return; }
+        input.removeAttribute('aria-invalid');
+        var top = PART.dur || v;  // the duration unknown: the backend checks
+        if (f[1] === 'start') PART.from = Math.min(v, top); else PART.to = Math.min(v, top);
+        input.value = fmtTime1(f[1] === 'start' ? PART.from : PART.to);
+        savePart();
+      }
+      input.addEventListener('change', commit);
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+    });
+    $('partPlay').addEventListener('click', playPart);
+    $('partUseAll').addEventListener('click', function () { call('use_part_for_new', PART.id); });
+    window.addEventListener('resize', function () { if (PART.id && !$('insPart').hidden && PART.mode === 'part') drawPart(); });
   }
 
   function logPathText(p, set) {
     if (!p) return t('log.path_none');
     var root = set.projects_dir;
     if (root && p.indexOf(root) === 0) p = baseName(root) + p.slice(root.length);
-    return t('log.path', { path: p.split(/[\\/]+/).filter(Boolean).join(' › ') });
+    return t(/compute_log\.txt$/.test(p) ? 'log.path_compute' : 'log.path', { path: p.split(/[\\/]+/).filter(Boolean).join(' › ') });
   }
   function lineKey(l) { return (l && l.t) + '\u0000' + (l && l.text); }
   function lineEl(l) {
@@ -758,8 +1081,9 @@
   var dragTimer = null;
   function renderDrop() {
     var empty = !recsOf(S.state).length;
-    $('dropzone').classList.toggle('dropping', S.drag && !readonly(S.state));
-    $('dropmask').hidden = !(S.drag && !empty && !readonly(S.state));
+    var allow = !readonly(S.state) && !cmode(S.state);  // recordings are added in Annotate
+    $('dropzone').classList.toggle('dropping', S.drag && allow);
+    $('dropmask').hidden = !(S.drag && !empty && allow);
     var p = projOf(S.state);
     setText($('dropText'), p ? t('drop.add_to', { project: p.name }) : t('drop.add'));
   }
@@ -1042,7 +1366,7 @@
 
   /* ---------- menus ---------- */
 
-  var MENUS = [['settingsBtn', 'settingsMenu'], ['projMenuBtn', 'projMenu']];
+  var MENUS = [['settingsBtn', 'settingsMenu'], ['projMenuBtn', 'projMenu'], ['csvBtn', 'csvMenu']];
   function closeMenus(returnFocus) {
     MENUS.forEach(function (p) {
       var btn = $(p[0]), m = $(p[1]);
@@ -1063,14 +1387,14 @@
       if (!open) return;
       m.hidden = false;
       btn.setAttribute('aria-expanded', 'true');
-      var first = m.querySelector('button:not([aria-disabled="true"])');
+      var first = m.querySelector('button:not([hidden]):not([aria-disabled="true"])');
       if (first) first.focus();
     });
     m.addEventListener('keydown', function (e) {
       var keys = { ArrowDown: 1, ArrowUp: -1, Home: 0, End: 0 };
       if (!(e.key in keys)) return;
       e.preventDefault();
-      var items = Array.prototype.slice.call(m.querySelectorAll('button')), i = items.indexOf(document.activeElement);
+      var items = Array.prototype.slice.call(m.querySelectorAll('button')).filter(function (b) { return !b.hidden; }), i = items.indexOf(document.activeElement);
       i = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (i + keys[e.key] + items.length) % items.length;
       items[i].focus();
     });
@@ -1081,6 +1405,8 @@
   function bind() {
     setupMenu('settingsBtn', 'settingsMenu');
     setupMenu('projMenuBtn', 'projMenu');
+    setupMenu('csvBtn', 'csvMenu');
+    bindPart();
     $('changeFolderBtn').addEventListener('click', function () { if (enabled(this)) { closeMenus(true); call('choose_projects_dir'); } });
     Array.prototype.forEach.call(document.querySelectorAll('#settingsMenu [data-ui]'), function (b) {
       b.addEventListener('click', function () { chooseLanguage(b.getAttribute('data-ui')); });
@@ -1114,11 +1440,22 @@
     });
     $('showAllBtn').addEventListener('click', function () { S.filter = null; if (S.state) render(); });
     $('openFolderBtn').addEventListener('click', function () { call('open_project_folder'); });
-    $('csvBtn').addEventListener('click', function () { if (enabled(this)) call('open_csv'); });
+    Array.prototype.forEach.call(document.querySelectorAll('#csvMenu [data-table]'), function (b) {
+      b.addEventListener('click', function () { if (enabled(b)) { closeMenus(true); call('open_csv', b.getAttribute('data-table')); } });
+    });
     $('addBtn').addEventListener('click', function () { call('add_files'); });
     $('chooseBtn').addEventListener('click', function () { call('add_files'); });
     $('addMoreBtn').addEventListener('click', function () { call('add_files'); });
-    $('startBtn').addEventListener('click', function () { if (enabled(this)) call('start').then(started); });
+    $('startBtn').addEventListener('click', function () { if (enabled(this)) call(cmode(S.state) ? 'compute' : 'start').then(started); });
+    document.querySelectorAll('.modes [data-mode]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var m = b.getAttribute('data-mode');
+        if (m === modeOf(S.state)) return;
+        S.modeWant = m;
+        if (S.state) render();
+        call('set_mode', m);
+      });
+    });
     $('stopBtn').addEventListener('click', function () { if (enabled(this)) call('stop'); });
     $('logToggle').addEventListener('click', function () { setLog(!S.log); });
     $('drawerClose').addEventListener('click', function () { setLog(false); $('logToggle').focus(); });
@@ -1129,6 +1466,7 @@
     $('projName').addEventListener('click', function () { if (!readonly(S.state)) startRename(); });
     $('renameBtn').addEventListener('click', startRename);
     $('againAllBtn').addEventListener('click', confirmAgainAll);
+    $('importPartsBtn').addEventListener('click', function () { if (enabled(this)) { closeMenus(true); call('import_parts'); } });
     $('deleteBtn').addEventListener('click', confirmDelete);
     $('renameInput').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); endRename(true); }
@@ -1198,7 +1536,11 @@
       var b = dz.getBoundingClientRect();
       if (e.clientX <= b.left || e.clientX >= b.right || e.clientY <= b.top || e.clientY >= b.bottom) dragOff();
     });
-    dz.addEventListener('drop', function (e) { e.preventDefault(); dragOff(); addDropped(e.dataTransfer); });
+    dz.addEventListener('drop', function (e) {
+      e.preventDefault(); dragOff();
+      if (cmode(S.state)) { note(t('drop.annotate_only')); return; }
+      addDropped(e.dataTransfer);
+    });
     window.addEventListener('clausa:changed', function () { refresh(); });
     // Elsewhere a drop must not make the web view open the file as a page.
     window.addEventListener('dragover', function (e) { if (!dz.contains(e.target)) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'; } });
@@ -1275,12 +1617,14 @@
 
     var X = {}, clock = 14 * 3600 + 5 * 60 + 2, sim = null, stopTimer = null, noticeN = 0;
     var D = {
-      app: { version: '1.0.2', version_full: '1.0.2', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX', device_key: preview ? 'preview' : 'mlx',
+      app: { version: '1.0.3', version_full: '1.0.3', device: preview ? 'Preview without the app · example data' : 'Mac GPU · MLX', device_key: preview ? 'preview' : 'mlx',
              trash: 'Trash', trash_key: 'trash', ui_language: UI, ui_language_setting: params.get('ui') ? UI : null,
-             appearance: ['light', 'dark'].indexOf(params.get('theme')) >= 0 ? params.get('theme') : 'system' },
+             appearance: ['light', 'dark'].indexOf(params.get('theme')) >= 0 ? params.get('theme') : 'system',
+             mode: params.get('mode') === 'compute' ? 'compute' : 'annotate' },
       settings: { projects_dir: DIR, projects_dir_short: DIR },
-      projects: [], earlier: [], current: null, run: idleRun(), notice: { id: 0, text: '' }
+      projects: [], earlier: [], current: null, run: idleRun(), job: idleJob(), notice: { id: 0, text: '' }
     };
+    function idleJob() { return { status: 'idle', project_id: null, total: 0, done_count: 0, failed_count: 0, ended_count: 0, elapsed_s: 0, started: '' }; }
     function idleRun() { return { status: 'idle', project_id: null, project_name: '', session_dir: null, csv_path: null, started: '', elapsed_s: 0, eta_s: null, progress: 0, stage_index: 0, stage_count: STAGES.length, stage_label: '', stage: '', current_file: null, current_name: '', done_count: 0, failed_count: 0, total: 0 }; }
     function hms(s) { s = Math.floor(s); return pad2(Math.floor(s / 3600) % 24) + ':' + pad2(Math.floor(s / 60) % 60) + ':' + pad2(s % 60); }
     function proj(id) { for (var j = 0; j < D.projects.length; j++) if (D.projects[j].id === id) return D.projects[j]; return null; }
@@ -1302,6 +1646,7 @@
     function finishRec(p, r, session) {
       r.status = 'done'; r.progress = 100; r.textgrids = { words: 'yes', clauses: 'yes' }; r.measures = x(p, r).measures;
       r.error = r.error_code = r.error_params = null; r.failed_stage = null; x(p, r).session = session; r.analysed = iso(session);
+      x(p, r).computed = false;
     }
     function failRec(p, r, stage, session) {
       var e = ERRORS[stage] || ERRORS[2];
@@ -1318,6 +1663,14 @@
         if (typeof st === 'number') finishRec(p, r, spec.sessions[st]);
         else if (String(st).indexOf('fail:') === 0) failRec(p, r, Number(st.slice(5)), spec.sessions[spec.sessions.length - 1]);
       });
+      // Compute: every annotated recording computed, as after a Start in Compute; in the first project,
+      // P04's TextGrid edited since (ready) and P09's clauses tier lost in editing (failed)
+      p.recordings.forEach(function (r) {
+        if (r.status !== 'done') return;
+        x(p, r).computed = !/^P04_/.test(r.id);
+        x(p, r).cfail = /^P09_/.test(r.id) ? 'no_tier' : null;
+      });
+      if (p.recordings.some(function (r) { return x(p, r).computed; })) p.computed = iso(spec.sessions[spec.sessions.length - 1]).slice(0, 11) + '15:20:00';
       // the log of the last session, as the drawer would show it
       var last = spec.sessions[spec.sessions.length - 1], t0 = Number(last.slice(11, 13)) * 3600 + Number(last.slice(14, 16)) * 60;
       var inLast = p.recordings.filter(function (r) { return x(p, r).session === last; });
@@ -1359,7 +1712,7 @@
       counts();
     }
     function startSession(p, recs) {
-      if (!p || busy() || !recs.length) return false;
+      if (!p || busy() || jobBusy() || !recs.length) return false;
       var stamp = TODAY + ' ' + pad2(Math.floor(clock / 3600)) + '.' + pad2(Math.floor(clock / 60) % 60);
       D.run = idleRun();
       D.run.status = 'running';
@@ -1446,34 +1799,75 @@
       }, 700);
       return true;
     }
+    function jobBusy() { return D.job.status === 'running' || D.job.status === 'stopping'; }
+    function cstate(p, r) {
+      var j = D.job;
+      if (jobBusy() && j.project_id === p.id && j.ids.indexOf(r.id) >= 0 && j.ended.indexOf(r.id) < 0) return { status: 'computing' };
+      if (r.status !== 'done') return { status: 'not_annotated' };
+      var xr = x(p, r);
+      if (!xr.computed) return { status: 'ready' };
+      if (xr.cfail) return { status: 'failed', error_code: 'no_tier', error_params: { tier: 'clauses' }, error: 'Its TextGrid has no clauses tier. Add it again in Praat, named clauses.' };
+      return { status: 'computed', at: p.computed };
+    }
+    var jobTimer = null;
+    function startCompute(p) {
+      if (busy() || jobBusy()) return false;
+      var ids = p.recordings.filter(function (r) { return r.status === 'done'; }).map(function (r) { return r.id; });
+      if (!ids.length) return false;
+      var t0 = Date.now(), now = new Date();
+      D.job = { status: 'running', project_id: p.id, total: ids.length, done_count: 0, failed_count: 0, ended_count: 0, elapsed_s: 0,
+                started: pad2(now.getHours()) + ':' + pad2(now.getMinutes()), ids: ids, ended: [] };
+      p.log.lines = [];
+      plog(p, 'Compute: the measures of ' + recordings(ids.length) + ' from their clauses TextGrids');
+      (function next() {
+        jobTimer = setTimeout(function () {
+          var j = D.job;
+          if (j.status === 'stopping') { j.status = 'stopped'; plog(p, 'Result: stopped; the measures stay as they were'); return; }
+          var id = j.ids[j.ended.length], r = p.recordings.filter(function (q) { return q.id === id; })[0];
+          j.ended.push(id); j.ended_count = j.ended.length; j.elapsed_s = (Date.now() - t0) / 1000;
+          if (r) {
+            x(p, r).computed = true;
+            if (x(p, r).cfail) { j.failed_count++; plog(p, r.name + ': Its TextGrid has no clauses tier. Add it again in Praat, named clauses.', 'error'); }
+            else { j.done_count++; plog(p, r.name + ': computed'); }
+          }
+          if (j.ended.length < j.ids.length) { next(); return; }
+          p.computed = new Date().toISOString();
+          j.status = 'done';
+          plog(p, 'Result: ' + j.done_count + ' of ' + j.total + ' computed' + (j.failed_count ? ', ' + j.failed_count + ' failed' : ''), j.failed_count ? 'error' : 'ok');
+        }, 160);
+      })();
+      return true;
+    }
     function snapshot() {
       var p = cur(), runningId = busy() ? D.run.project_id : null, out = {
-        app: D.app, settings: D.settings, run: D.run, notice: D.notice,
+        app: D.app, settings: D.settings, run: D.run, job: D.job, notice: D.notice,
         projects: D.projects.map(function (q) {
           return { id: q.id, name: q.name, language: q.language, count: q.recordings.length, failed: q.recordings.filter(function (r) { return r.status === 'failed'; }).length,
-                   status: q.id === runningId ? 'running' : 'idle', progress: q.id === runningId ? D.run.progress : 0 };
+                   status: q.id === runningId ? 'running' : jobBusy() && D.job.project_id === q.id ? 'computing' : 'idle', progress: q.id === runningId ? D.run.progress : 0 };
         }),
         earlier: D.earlier.map(function (e) { return { id: e.id, name: e.name, language: e.language, count: e.recordings.length }; }),
         project: null, recordings: [], log: { path: null, lines: [] }
       };
       var e = D.earlier.filter(function (q) { return q.id === D.current; })[0];
       if (e) {
-        out.project = { id: e.id, name: e.name, language: e.language, kind: 'earlier', dir: OLD + '/' + e.name, created: '', sessions: 1, last_session: iso(e.name), csv: true };
-        out.recordings = e.recordings;
+        out.project = { id: e.id, name: e.name, language: e.language, kind: 'earlier', dir: OLD + '/' + e.name, created: '', sessions: 1, last_session: iso(e.name), csv: true, tables: [], computed: null };
+        out.recordings = e.recordings.map(function (r) { return Object.assign({}, r, { compute: { status: r.measures ? 'computed' : 'not_annotated' } }); });
         out.log = { path: OLD + '/' + e.name + '/log.txt', lines: [] };
       } else if (p) {
         var ended = p.sessions;
         out.project = { id: p.id, name: p.name, language: p.language, kind: 'project', dir: DIR + '/' + p.name, created: '', sessions: ended.length,
-                        last_session: ended.length ? iso(ended[ended.length - 1]) : null, csv: p.recordings.some(function (r) { return r.status === 'done'; }) };
+                        last_session: ended.length ? iso(ended[ended.length - 1]) : null, csv: !!p.computed,
+                        tables: p.computed ? ['words', 'pauses', 'clauses'] : [], computed: p.computed || null };
         out.recordings = p.recordings.map(function (r) {
           var stem = r.id, sess = x(p, r).session || (sim && sim.p === p && sim.all.indexOf(r.id) >= 0 ? sim.stamp : null), dir = DIR + '/' + p.name + '/sessions/' + (sess || '') + '/';
           r.files = r.status === 'new' ? [] : [
-            { label: 'Words TextGrid', label_kind: 'words', path: dir + 'asr/textgrids_clean/' + stem + '.TextGrid', exists: r.textgrids.words === 'yes', kind: 'file' },
-            { label: 'Clauses TextGrid', label_kind: 'clauses', path: dir + 'clauses/' + stem + '.TextGrid', exists: r.textgrids.clauses === 'yes', kind: 'file' }
+            { label: 'Clauses TextGrid', label_kind: 'clauses', path: dir + 'clauses/' + stem + '.TextGrid', exists: r.textgrids.clauses === 'yes', kind: 'file' },
+            { label: 'Words TextGrid', label_kind: 'words', path: dir + 'asr/textgrids_clean/' + stem + '.TextGrid', exists: r.textgrids.words === 'yes', kind: 'file' }
           ];
           if (sess && r.status !== 'running') r.files.push({ label: 'Session ' + sess, label_kind: 'session', name: sess, path: dir, exists: true, kind: 'dir' });
           r.failed_stage_key = STAGE_KEYS[STAGES.indexOf(r.failed_stage)] || null;
-          return r;
+          var cs = cstate(p, r);
+          return Object.assign({}, r, { compute: cs, measures: cs.status === 'computed' ? r.measures : null });
         });
         out.log = p.log;
       }
@@ -1576,7 +1970,16 @@
       },
       start: function () { var p = cur(); return Promise.resolve(!!p && startSession(p, p.recordings.filter(function (r) { return r.status === 'new' || r.status === 'failed'; }))); },
       analyse_again: function (ids) { var p = cur(); return Promise.resolve(!!p && startSession(p, p.recordings.filter(function (r) { return !ids || ids.indexOf(r.id) >= 0; }))); },
-      stop: function () { return Promise.resolve(stopRun()); },
+      stop: function () {
+        if (D.job.status === 'running') { D.job.status = 'stopping'; return Promise.resolve(true); }
+        return Promise.resolve(stopRun());
+      },
+      compute: function () { var p = cur(); return Promise.resolve(!!p && startCompute(p)); },
+      set_mode: function (code) {
+        if (['annotate', 'compute'].indexOf(code) < 0) return Promise.resolve({ mode: D.app.mode });
+        D.app.mode = code;
+        return Promise.resolve({ mode: code });
+      },
       choose_projects_dir: function () { return Promise.resolve(DIR); },
       open_url: function () { return Promise.resolve(true); },
       set_ui_language: function (code) {
@@ -1591,6 +1994,39 @@
       },
       open_project_folder: function () { return Promise.resolve(true); },
       open_csv: function () { return Promise.resolve(true); },
+      // Part to analyse: a made-up waveform (speech in bursts), parts kept on the recordings
+      wave: function (id) {
+        var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0];
+        if (!r) return Promise.resolve(null);
+        var peaks = [], seed = 0;
+        for (var i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) % 9973;
+        for (var k = 0; k < 600; k++) {
+          var x = Math.sin(k * 0.13 + seed) * Math.sin(k * 0.031 + seed / 7), lead = k < 600 * 6 / (r.duration_s || 120) ? 0.04 : 1;
+          peaks.push(Math.round(Math.min(1, Math.abs(x) * (0.55 + 0.45 * Math.abs(Math.sin(k * 1.7 + seed))) * lead) * 1000) / 1000);
+        }
+        return Promise.resolve({ duration: r.duration_s, peaks: peaks });
+      },
+      set_part: function (id, start, end) {
+        var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0];
+        if (!r) return Promise.resolve({ ok: false });
+        if (start == null && end == null) { r.part = null; return Promise.resolve({ ok: true, part: null }); }
+        end = Math.min(end, r.duration_s);
+        var whole = fmtTime1(r.duration_s);
+        if (!(start >= 0 && start < end)) return Promise.resolve({ ok: false, key: 'part.invalid', params: { end: whole }, text: 'The part must start before it ends, within 0:00.0-' + whole });
+        if (end - start < 1) return Promise.resolve({ ok: false, key: 'part.short', params: { s: '1' }, text: 'The part must last at least 1 s' });
+        r.part = [Math.round(start * 100) / 100, Math.round(end * 100) / 100];
+        return Promise.resolve({ ok: true, part: r.part });
+      },
+      use_part_for_new: function (id) {
+        var p = cur(), r = p && p.recordings.filter(function (q) { return q.id === id; })[0], n = 0;
+        if (!r || !r.part) return Promise.resolve({ ok: false });
+        p.recordings.forEach(function (o) { if (o !== r && o.status === 'new' && o.duration_s >= r.part[1]) { o.part = r.part.slice(); n++; } });
+        notice({ key: 'notice.part_given', params: { n: n, skipped: 0 }, text: n + ' more recording' + (n === 1 ? ' takes' : 's take') + ' this part' });
+        return Promise.resolve({ ok: true, n: n, skipped: 0 });
+      },
+      import_parts: function () { return Promise.resolve({ ok: false }); },
+      play_part: function (id, start, end) { return Promise.resolve({ ok: true, length: Math.min(end - start, 600) }); },
+      stop_playing: function () { return Promise.resolve(true); },
       open_folder: function () { return Promise.resolve(true); },
       reveal: function () { return Promise.resolve(true); },
       copy_log: function () { var p = cur(); return Promise.resolve(p ? p.log.lines.map(function (l) { return l.t + '  ' + l.text; }).join('\n') + '\n' : ''); },
@@ -1598,7 +2034,7 @@
     };
     return {
       api: mockApi,
-      dispose: function () { clearInterval(ticker); clearTimeout(stopTimer); }
+      dispose: function () { clearInterval(ticker); clearTimeout(stopTimer); clearTimeout(jobTimer); }
     };
   }
 
