@@ -36,9 +36,6 @@ The name comes from *clause* and *pausa*, Latin for pause.
 | Free space | 20 GB | 30 GB |
 | Internet | for the first start, which downloads 8.3 GB | for the first start, which downloads 11.8 GB |
 
-Everything runs on your computer: Clausa collects nothing and sends nothing.
-It uses the internet only to download the models at the first start.
-
 ## Set up
 
 **Mac**
@@ -58,9 +55,6 @@ After that, open **Clausa.app**.
 3. Wait until the window says Ready, then click **Open Clausa**.
 
 After that, open **Clausa.exe**.
-
-Keep the `Clausa` folder out of iCloud Drive, OneDrive and Dropbox. If the set
-up stops, start it again: it continues where it stopped.
 
 ## Use
 
@@ -226,6 +220,20 @@ Not now. Most of what Clausa installs serves both languages: the speech
 recognition, alignment and disfluency models and the software that runs them.
 The parts for one language only are small: about 1.6 GB for Japanese and
 0.6 GB for English.
+
+### Can the Clausa folder be in iCloud Drive, OneDrive or Dropbox?
+
+No. After the first start the folder holds more than 10 GB. Syncing it is slow,
+and the sync service can remove files Clausa needs from your computer.
+
+### What if the set up stops?
+
+Start it again. It continues where it stopped.
+
+### Does Clausa send my data anywhere?
+
+No. Everything runs on your computer: Clausa collects nothing and sends
+nothing. It uses the internet only to download the models at the first start.
 
 ## Languages
 
