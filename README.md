@@ -165,6 +165,40 @@ which kind each one is. Its limits:
 Check the disfluency tier in Praat. Details and references: the
 [model card](https://huggingface.co/oldriku/Clausa).
 
+### What models and software does each step use?
+
+| Step | Model or method | Software |
+|---|---|---|
+| Speech recognition | Qwen3-ASR-1.7B, with rough word timings from Qwen3-ForcedAligner-0.6B (Shi et al., 2026) | qwen-asr with PyTorch (Paszke et al., 2019); on a Mac, mlx-qwen3-asr with MLX (Hannun et al., 2023) |
+| Word timings | the MFA English (US ARPA) and Japanese models 3.0.0; Japanese words split by MeCab (Kudo et al., 2004) with UniDic-lite | Montreal Forced Aligner 3.3.9 (McAuliffe et al., 2017); fugashi (McCann, 2020) |
+| Pauses | silence of 0.25 s or more between the aligned words | — |
+| Disfluency | [Clausa's detector](https://huggingface.co/oldriku/Clausa): XLM-RoBERTa-base (Conneau et al., 2020), fine-tuned on Switchboard (Godfrey et al., 1992) and synthetic learner sentences (Kundu et al., 2022) | Transformers (Wolf et al., 2020) |
+| Clauses, English | rules after Vercellotti and Hall (2024) on the parser `en_ud_L1L2e_combined_trf` (Kyle et al., 2022) | spaCy (Honnibal et al., 2020) |
+| Clauses, Japanese | the same rules for Japanese, on the parser `ja_ginza_electra` | GiNZA (Matsuda et al., 2019) |
+| Syllables, English | the vowels of the aligned pronunciation | — |
+| Morae, Japanese | each word's kana reading from SudachiDict-core | SudachiPy (Takaoka et al., 2018) |
+
+<details>
+<summary>References</summary>
+
+- Conneau, A., et al. (2020). Unsupervised cross-lingual representation learning at scale. *ACL 2020*, 8440–8451. https://doi.org/10.18653/v1/2020.acl-main.747
+- Godfrey, J. J., Holliman, E. C., & McDaniel, J. (1992). SWITCHBOARD: Telephone speech corpus for research and development. *ICASSP-92*, 517–520. https://doi.org/10.1109/icassp.1992.225858
+- Hannun, A., Digani, J., Katharopoulos, A., & Collobert, R. (2023). *MLX: Efficient and flexible machine learning on Apple silicon* [Computer software]. https://github.com/ml-explore/mlx
+- Honnibal, M., Montani, I., Van Landeghem, S., & Boyd, A. (2020). *spaCy: Industrial-strength natural language processing in Python* [Computer software]. https://spacy.io
+- Kudo, T., Yamamoto, K., & Matsumoto, Y. (2004). Applying conditional random fields to Japanese morphological analysis. *EMNLP 2004*, 230–237. https://aclanthology.org/W04-3230/
+- Kundu, R., Jyothi, P., & Bhattacharyya, P. (2022). Zero-shot disfluency detection for Indian languages. *COLING 2022*, 4442–4454. https://aclanthology.org/2022.coling-1.392/
+- Kyle, K., Eguchi, M., Miller, A., & Sither, T. (2022). A dependency treebank of spoken second language English. *BEA 2022*, 39–45. https://doi.org/10.18653/v1/2022.bea-1.7
+- Matsuda, H., Omura, M., & Asahara, M. (2019). *GiNZA: Japanese NLP library* [Computer software]. https://github.com/megagonlabs/ginza
+- McAuliffe, M., Socolof, M., Mihuc, S., Wagner, M., & Sonderegger, M. (2017). Montreal Forced Aligner: Trainable text-speech alignment using Kaldi. *Interspeech 2017*, 498–502. https://doi.org/10.21437/interspeech.2017-1386
+- McCann, P. (2020). fugashi, a tool for tokenizing Japanese in Python. *NLP-OSS 2020*, 44–51. https://doi.org/10.18653/v1/2020.nlposs-1.7
+- Paszke, A., et al. (2019). PyTorch: An imperative style, high-performance deep learning library. *NeurIPS 2019*, 8024–8035. https://arxiv.org/abs/1912.01703
+- Shi, X., et al. (2026). *Qwen3-ASR technical report* (arXiv:2601.21337). https://doi.org/10.48550/arXiv.2601.21337
+- Takaoka, K., Hisamoto, S., Kawahara, N., Sakamoto, M., Uchida, Y., & Matsumoto, Y. (2018). Sudachi: A Japanese tokenizer for business. *LREC 2018*. https://aclanthology.org/L18-1355/
+- Vercellotti, M. L., & Hall, S. (2024). Coding all clauses in L2 data: A call for consistency. *Research Methods in Applied Linguistics*, *3*(3), 100132. https://doi.org/10.1016/j.rmal.2024.100132
+- Wolf, T., et al. (2020). Transformers: State-of-the-art natural language processing. *EMNLP 2020: System Demonstrations*, 38–45. https://doi.org/10.18653/v1/2020.emnlp-demos.6
+
+</details>
+
 ### What speech was Clausa tested on?
 
 Storytelling monologues by second-language learners, compared with human
@@ -218,7 +252,7 @@ The parts for one language only are small: about 1.6 GB for Japanese and
 
 ### Can the Clausa folder be in iCloud Drive, OneDrive or Dropbox?
 
-No. After the first start the folder holds more than 10 GB. Syncing it is slow,
+Not recommended. After the first start the folder holds more than 10 GB. Syncing it is slow,
 and the sync service can remove files Clausa needs from your computer.
 
 ### What if the set up stops?

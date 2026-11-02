@@ -125,6 +125,40 @@ Clausaのdisfluency検出器が印を付けた語です。filled pause（um、�
 
 Praatでdisfluency tierを確認してください。詳細と文献は[モデルカード](https://huggingface.co/oldriku/Clausa)（英語）にあります。
 
+### 各ステップで使っているモデルとソフトウェアは？
+
+| ステップ | モデル・手法 | ソフトウェア |
+|---|---|---|
+| 音声認識 | Qwen3-ASR-1.7B。単語のおおよその時刻はQwen3-ForcedAligner-0.6B（Shi et al., 2026） | qwen-asrとPyTorch（Paszke et al., 2019）。MacではMLX（Hannun et al., 2023）上のmlx-qwen3-asr |
+| 単語の時刻 | MFAの英語（US ARPA）・日本語モデル3.0.0。日本語の単語分割はMeCab（Kudo et al., 2004）とUniDic-lite | Montreal Forced Aligner 3.3.9（McAuliffe et al., 2017）、fugashi（McCann, 2020） |
+| pause | アラインメント後の単語間にある0.25秒以上の無音 | — |
+| disfluency | [Clausaのdisfluency検出器](https://huggingface.co/oldriku/Clausa)：XLM-RoBERTa-base（Conneau et al., 2020）を、Switchboard（Godfrey et al., 1992）と学習者の合成文（Kundu et al., 2022）でファインチューニング | Transformers（Wolf et al., 2020） |
+| clause（英語） | Vercellotti and Hall（2024）に基づく規則。構文解析は`en_ud_L1L2e_combined_trf`（Kyle et al., 2022） | spaCy（Honnibal et al., 2020） |
+| clause（日本語） | 同じ規則を日本語向けにしたもの。構文解析は`ja_ginza_electra` | GiNZA（Matsuda et al., 2019） |
+| syllable（英語） | アラインメントされた発音の母音 | — |
+| mora（日本語） | SudachiDict-coreによる各語のカナの読み | SudachiPy（Takaoka et al., 2018） |
+
+<details>
+<summary>文献</summary>
+
+- Conneau, A., et al. (2020). Unsupervised cross-lingual representation learning at scale. *ACL 2020*, 8440–8451. https://doi.org/10.18653/v1/2020.acl-main.747
+- Godfrey, J. J., Holliman, E. C., & McDaniel, J. (1992). SWITCHBOARD: Telephone speech corpus for research and development. *ICASSP-92*, 517–520. https://doi.org/10.1109/icassp.1992.225858
+- Hannun, A., Digani, J., Katharopoulos, A., & Collobert, R. (2023). *MLX: Efficient and flexible machine learning on Apple silicon* [Computer software]. https://github.com/ml-explore/mlx
+- Honnibal, M., Montani, I., Van Landeghem, S., & Boyd, A. (2020). *spaCy: Industrial-strength natural language processing in Python* [Computer software]. https://spacy.io
+- Kudo, T., Yamamoto, K., & Matsumoto, Y. (2004). Applying conditional random fields to Japanese morphological analysis. *EMNLP 2004*, 230–237. https://aclanthology.org/W04-3230/
+- Kundu, R., Jyothi, P., & Bhattacharyya, P. (2022). Zero-shot disfluency detection for Indian languages. *COLING 2022*, 4442–4454. https://aclanthology.org/2022.coling-1.392/
+- Kyle, K., Eguchi, M., Miller, A., & Sither, T. (2022). A dependency treebank of spoken second language English. *BEA 2022*, 39–45. https://doi.org/10.18653/v1/2022.bea-1.7
+- Matsuda, H., Omura, M., & Asahara, M. (2019). *GiNZA: Japanese NLP library* [Computer software]. https://github.com/megagonlabs/ginza
+- McAuliffe, M., Socolof, M., Mihuc, S., Wagner, M., & Sonderegger, M. (2017). Montreal Forced Aligner: Trainable text-speech alignment using Kaldi. *Interspeech 2017*, 498–502. https://doi.org/10.21437/interspeech.2017-1386
+- McCann, P. (2020). fugashi, a tool for tokenizing Japanese in Python. *NLP-OSS 2020*, 44–51. https://doi.org/10.18653/v1/2020.nlposs-1.7
+- Paszke, A., et al. (2019). PyTorch: An imperative style, high-performance deep learning library. *NeurIPS 2019*, 8024–8035. https://arxiv.org/abs/1912.01703
+- Shi, X., et al. (2026). *Qwen3-ASR technical report* (arXiv:2601.21337). https://doi.org/10.48550/arXiv.2601.21337
+- Takaoka, K., Hisamoto, S., Kawahara, N., Sakamoto, M., Uchida, Y., & Matsumoto, Y. (2018). Sudachi: A Japanese tokenizer for business. *LREC 2018*. https://aclanthology.org/L18-1355/
+- Vercellotti, M. L., & Hall, S. (2024). Coding all clauses in L2 data: A call for consistency. *Research Methods in Applied Linguistics*, *3*(3), 100132. https://doi.org/10.1016/j.rmal.2024.100132
+- Wolf, T., et al. (2020). Transformers: State-of-the-art natural language processing. *EMNLP 2020: System Demonstrations*, 38–45. https://doi.org/10.18653/v1/2020.emnlp-demos.6
+
+</details>
+
 ### どのような発話で検証されていますか？
 
 第二言語学習者によるストーリーテリングのモノローグで、人手のアノテーションと比較しました（[精度](#精度)）。ALLSSTARの英語40録音（36人、14の母語）と、I-JASの日本語40録音（20人、4つの母語グループ）で、長さは19秒から6分です。それ以外の発話も処理できますが、検証はしていません（第一言語の発話、会話、子どもの発話、ほかのタスク、雑音の多い録音など）。指標を使う前に、ご自分の録音の一部をPraatで確認してください。
@@ -153,7 +187,7 @@ Praatで、tierの名前を変えずに、同じ場所にテキストファイ�
 
 ### ClausaフォルダーをiCloud Drive、OneDrive、Dropboxに置けますか？
 
-いいえ。初回起動後のフォルダーは10GBを超えます。同期には時間がかかり、同期サービスがClausaの必要とするファイルをコンピューターから削除することがあります。
+お勧めしません。初回起動後のフォルダーは10GBを超えます。同期には時間がかかり、同期サービスがClausaの必要とするファイルをコンピューターから削除することがあります。
 
 ### セットアップが途中で止まった場合は？
 

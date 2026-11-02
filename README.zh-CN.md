@@ -126,6 +126,40 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 
 请在 Praat 中检查 disfluency tier。详情和文献见[模型卡](https://huggingface.co/oldriku/Clausa)（英文）。
 
+### 每一步使用了哪些模型和软件？
+
+| 步骤 | 模型或方法 | 软件 |
+|---|---|---|
+| 语音识别 | Qwen3-ASR-1.7B；词的大致时间来自 Qwen3-ForcedAligner-0.6B（Shi et al., 2026） | qwen-asr 与 PyTorch（Paszke et al., 2019）；Mac 上为基于 MLX（Hannun et al., 2023）的 mlx-qwen3-asr |
+| 词的时间 | MFA 英语（US ARPA）和日语模型 3.0.0；日语分词用 MeCab（Kudo et al., 2004）和 UniDic-lite | Montreal Forced Aligner 3.3.9（McAuliffe et al., 2017）；fugashi（McCann, 2020） |
+| pause | 对齐后词与词之间 0.25 秒或以上的静音 | — |
+| disfluency | [Clausa 的 disfluency 检测器](https://huggingface.co/oldriku/Clausa)：在 Switchboard（Godfrey et al., 1992）和学习者合成句（Kundu et al., 2022）上微调的 XLM-RoBERTa-base（Conneau et al., 2020） | Transformers（Wolf et al., 2020） |
+| clause（英语） | 依据 Vercellotti and Hall（2024）的规则；句法分析用 `en_ud_L1L2e_combined_trf`（Kyle et al., 2022） | spaCy（Honnibal et al., 2020） |
+| clause（日语） | 同一规则的日语版本；句法分析用 `ja_ginza_electra` | GiNZA（Matsuda et al., 2019） |
+| syllable（英语） | 对齐后发音中的元音 | — |
+| mora（日语） | SudachiDict-core 给出的每个词的假名读音 | SudachiPy（Takaoka et al., 2018） |
+
+<details>
+<summary>参考文献</summary>
+
+- Conneau, A., et al. (2020). Unsupervised cross-lingual representation learning at scale. *ACL 2020*, 8440–8451. https://doi.org/10.18653/v1/2020.acl-main.747
+- Godfrey, J. J., Holliman, E. C., & McDaniel, J. (1992). SWITCHBOARD: Telephone speech corpus for research and development. *ICASSP-92*, 517–520. https://doi.org/10.1109/icassp.1992.225858
+- Hannun, A., Digani, J., Katharopoulos, A., & Collobert, R. (2023). *MLX: Efficient and flexible machine learning on Apple silicon* [Computer software]. https://github.com/ml-explore/mlx
+- Honnibal, M., Montani, I., Van Landeghem, S., & Boyd, A. (2020). *spaCy: Industrial-strength natural language processing in Python* [Computer software]. https://spacy.io
+- Kudo, T., Yamamoto, K., & Matsumoto, Y. (2004). Applying conditional random fields to Japanese morphological analysis. *EMNLP 2004*, 230–237. https://aclanthology.org/W04-3230/
+- Kundu, R., Jyothi, P., & Bhattacharyya, P. (2022). Zero-shot disfluency detection for Indian languages. *COLING 2022*, 4442–4454. https://aclanthology.org/2022.coling-1.392/
+- Kyle, K., Eguchi, M., Miller, A., & Sither, T. (2022). A dependency treebank of spoken second language English. *BEA 2022*, 39–45. https://doi.org/10.18653/v1/2022.bea-1.7
+- Matsuda, H., Omura, M., & Asahara, M. (2019). *GiNZA: Japanese NLP library* [Computer software]. https://github.com/megagonlabs/ginza
+- McAuliffe, M., Socolof, M., Mihuc, S., Wagner, M., & Sonderegger, M. (2017). Montreal Forced Aligner: Trainable text-speech alignment using Kaldi. *Interspeech 2017*, 498–502. https://doi.org/10.21437/interspeech.2017-1386
+- McCann, P. (2020). fugashi, a tool for tokenizing Japanese in Python. *NLP-OSS 2020*, 44–51. https://doi.org/10.18653/v1/2020.nlposs-1.7
+- Paszke, A., et al. (2019). PyTorch: An imperative style, high-performance deep learning library. *NeurIPS 2019*, 8024–8035. https://arxiv.org/abs/1912.01703
+- Shi, X., et al. (2026). *Qwen3-ASR technical report* (arXiv:2601.21337). https://doi.org/10.48550/arXiv.2601.21337
+- Takaoka, K., Hisamoto, S., Kawahara, N., Sakamoto, M., Uchida, Y., & Matsumoto, Y. (2018). Sudachi: A Japanese tokenizer for business. *LREC 2018*. https://aclanthology.org/L18-1355/
+- Vercellotti, M. L., & Hall, S. (2024). Coding all clauses in L2 data: A call for consistency. *Research Methods in Applied Linguistics*, *3*(3), 100132. https://doi.org/10.1016/j.rmal.2024.100132
+- Wolf, T., et al. (2020). Transformers: State-of-the-art natural language processing. *EMNLP 2020: System Demonstrations*, 38–45. https://doi.org/10.18653/v1/2020.emnlp-demos.6
+
+</details>
+
 ### Clausa 在哪些语音上测试过？
 
 第二语言学习者讲故事的独白，与人工标注比较（[准确性](#准确性)）：ALLSSTAR 的 40 个英语录音（36 人，14 种母语）和 I-JAS 的 40 个日语录音（20 人，4 个母语组），时长 19 秒到 6 分钟。其他语音也能处理，但没有评估过：第一语言语音、对话、儿童语音、其他任务、噪声大的录音。依赖这些指标之前，请先在 Praat 中检查一部分自己的录音。
@@ -154,7 +188,7 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 
 ### Clausa 文件夹可以放在 iCloud 云盘、OneDrive 或 Dropbox 中吗？
 
-不可以。首次启动后，该文件夹超过 10 GB。同步很慢，而且同步服务可能会把 Clausa 需要的文件从电脑上移除。
+不建议。首次启动后，该文件夹超过 10 GB。同步很慢，而且同步服务可能会把 Clausa 需要的文件从电脑上移除。
 
 ### 安装中断了怎么办？
 
