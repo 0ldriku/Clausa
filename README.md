@@ -2,14 +2,9 @@
 
 English · [日本語](README.ja.md) · [简体中文](README.zh-CN.md)
 
-Clausa does the annotation work of utterance fluency research automatically.
-Give it speech recordings and it returns the annotations as TextGrid files
-(words, pauses, disfluencies, clauses). It works with English and Japanese,
-for second- or first-language speech.
-
-Clausa is a research tool with one purpose: annotating speech recordings as
-accurately as possible, so that researchers can compute utterance fluency
-measures from them.
+Clausa does the fluency annotation of speech data automatically. Give it
+speech recordings and it returns the annotations as TextGrid files (words,
+pauses, disfluencies, clauses). It works with English and Japanese for now.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">

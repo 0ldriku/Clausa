@@ -2,9 +2,7 @@
 
 [English](README.md) · [日本語](README.ja.md) · 简体中文
 
-Clausa 自动完成 utterance fluency 研究中的标注工作。输入口语录音，它会把标注输出为 TextGrid 文件（words、pauses、disfluencies、clauses）。它支持英语和日语，适用于第二语言和第一语言口语。
-
-Clausa 是研究工具，目的只有一个：尽可能准确地标注口语录音，让研究者能据此计算 utterance fluency 指标。
+Clausa 自动完成口语数据的流利度标注工作。输入口语录音，它会把标注输出为 TextGrid 文件（words、pauses、disfluencies、clauses）。目前支持英语和日语。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">

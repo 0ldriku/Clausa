@@ -2,9 +2,7 @@
 
 [English](README.md) · 日本語 · [简体中文](README.zh-CN.md)
 
-Clausaは、utterance fluency研究のアノテーション作業を自動で行います。発話の録音を入力すると、アノテーション（words、pauses、disfluencies、clauses）をTextGridファイルとして出力します。英語と日本語に対応し、第二言語と第一言語のどちらの発話にも使えます。
-
-Clausaは研究用のツールで、目的は1つです。発話の録音をできるだけ正確にアノテーションし、研究者がそこからutterance fluencyの指標を算出できるようにすることです。
+Clausaは、発話データの流暢性アノテーション作業を自動で行います。発話の録音を入力すると、アノテーション（words、pauses、disfluencies、clauses）をTextGridファイルとして出力します。今は英語と日本語に対応しています。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.svg">
