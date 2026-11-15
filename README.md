@@ -299,18 +299,21 @@ for non-commercial use. See [LICENSE.md](LICENSE.md).
 
 ## Citation
 
-If you use Clausa, please cite the article. It is in press; the year, volume,
-pages and DOI will be added on publication.
+If you use Clausa, please cite the article.
 
-> Lu, J., & Sato, R. (in press). Automatic cross-lingual annotation of
+> Lu, J., & Sato, R. (2026). Automatic cross-lingual annotation of
 > clause-based utterance fluency in L2 speech. *Research Methods in Applied
-> Linguistics*.
+> Linguistics*, *5*(3), 100397. https://doi.org/10.1016/j.rmal.2026.100397
 
 ```bibtex
-@article{lu_sato_clausa,
+@article{,
   author  = {Lu, Jialiang and Sato, Reiko},
   title   = {Automatic cross-lingual annotation of clause-based utterance fluency in {L2} speech},
   journal = {Research Methods in Applied Linguistics},
-  year    = {in press}
+  volume  = {5},
+  number  = {3},
+  pages   = {100397},
+  year    = {2026},
+  doi     = {10.1016/j.rmal.2026.100397}
 }
 ```

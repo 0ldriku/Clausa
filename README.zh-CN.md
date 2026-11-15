@@ -220,17 +220,21 @@ Clausa 支持英语和日语。它的设计不限于这两种语言，但每一�
 
 ## 引用
 
-如果你使用 Clausa，请引用这篇文章。文章已被录用，即将发表；年份、卷、页码和 DOI 将在正式发表后补充。
+如果你使用 Clausa，请引用这篇文章。
 
-> Lu, J., & Sato, R. (in press). Automatic cross-lingual annotation of
+> Lu, J., & Sato, R. (2026). Automatic cross-lingual annotation of
 > clause-based utterance fluency in L2 speech. *Research Methods in Applied
-> Linguistics*.
+> Linguistics*, *5*(3), 100397. https://doi.org/10.1016/j.rmal.2026.100397
 
 ```bibtex
-@article{lu_sato_clausa,
+@article{,
   author  = {Lu, Jialiang and Sato, Reiko},
   title   = {Automatic cross-lingual annotation of clause-based utterance fluency in {L2} speech},
   journal = {Research Methods in Applied Linguistics},
-  year    = {in press}
+  volume  = {5},
+  number  = {3},
+  pages   = {100397},
+  year    = {2026},
+  doi     = {10.1016/j.rmal.2026.100397}
 }
 ```
