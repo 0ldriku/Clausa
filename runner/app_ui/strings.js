@@ -43,7 +43,7 @@ window.STRINGS = {
     "about.copyright": "© 2026 Jialiang Lu and Reiko Sato",
     "about.licence": "Code: MIT licence. Disfluency detector: CC BY-NC-SA 4.0, for non-commercial use. Details: LICENSE.md in the app folder.",
     "about.cite": "If you use Clausa, please cite:",
-    "about.citation": "Lu, J., & Sato, R. (in press). Automatic cross-lingual annotation of clause-based utterance fluency in L2 speech. *Research Methods in Applied Linguistics*.",
+    "about.citation": "Lu, J., & Sato, R. (2026). Automatic cross-lingual annotation of clause-based utterance fluency in L2 speech. *Research Methods in Applied Linguistics*, *5*(3), 100397. https://doi.org/10.1016/j.rmal.2026.100397",
     "about.copy_citation": "Copy citation",
     "about.github": "GitHub: {link}",
     "about.email": "Email: {link}",
