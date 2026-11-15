@@ -155,7 +155,7 @@ Clausa 的结果由程序自动生成，可能有错误。报告之前请先检�
 - Paszke, A., et al. (2019). PyTorch: An imperative style, high-performance deep learning library. *NeurIPS 2019*, 8024–8035. https://arxiv.org/abs/1912.01703
 - Shi, X., et al. (2026). *Qwen3-ASR technical report* (arXiv:2601.21337). https://doi.org/10.48550/arXiv.2601.21337
 - Takaoka, K., Hisamoto, S., Kawahara, N., Sakamoto, M., Uchida, Y., & Matsumoto, Y. (2018). Sudachi: A Japanese tokenizer for business. *LREC 2018*. https://aclanthology.org/L18-1355/
-- Vercellotti, M. L., & Hall, S. (2024). Coding all clauses in L2 data: A call for consistency. *Research Methods in Applied Linguistics*, *3*(3), 100132. https://doi.org/10.1016/j.rmal.2024.100132
+- Vercellotti, M. L., & Hall, S. (2024). Coding all clauses in L2 data: A call for consistency. *Research Methods in Applied Linguistics*, *3*(3), Article 100132. https://doi.org/10.1016/j.rmal.2024.100132
 - Wolf, T., et al. (2020). Transformers: State-of-the-art natural language processing. *EMNLP 2020: System Demonstrations*, 38–45. https://doi.org/10.18653/v1/2020.emnlp-demos.6
 
 </details>
@@ -224,10 +224,10 @@ Clausa 支持英语和日语。它的设计不限于这两种语言，但每一�
 
 > Lu, J., & Sato, R. (2026). Automatic cross-lingual annotation of
 > clause-based utterance fluency in L2 speech. *Research Methods in Applied
-> Linguistics*, *5*(3), 100397. https://doi.org/10.1016/j.rmal.2026.100397
+> Linguistics*, *5*(3), Article 100397. https://doi.org/10.1016/j.rmal.2026.100397
 
 ```bibtex
-@article{,
+@article{lusato2026,
   author  = {Lu, Jialiang and Sato, Reiko},
   title   = {Automatic cross-lingual annotation of clause-based utterance fluency in {L2} speech},
   journal = {Research Methods in Applied Linguistics},
